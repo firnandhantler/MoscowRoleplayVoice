@@ -1,0 +1,92 @@
+name: moscowroleplay-voice
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    shm_size: 128mb
+    stop_grace_period: 30s
+    environment:
+      POSTGRES_USER: ${POSTGRES_SUPERUSER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?Задайте POSTGRES_SUPERUSER_PASSWORD в файле .env}
+      POSTGRES_DB: ${POSTGRES_DB:-moscowroleplay_voice}
+      APP_DB_USER: ${POSTGRES_USER:-mrv_app}
+      APP_DB_PASSWORD: ${POSTGRES_PASSWORD:?Задайте POSTGRES_PASSWORD в файле .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # PostgreSQL не публикуется наружу. Для локальной разработки используйте
+    # docker-compose.dev.yml, который открывает порт только на 127.0.0.1.
+
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    image: moscowroleplay-voice-server:local
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      SHUTDOWN_TIMEOUT_MS: ${SHUTDOWN_TIMEOUT_MS:-10000}
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: ${SERVER_PORT:-3000}
+      WS_PATH: ${WS_PATH:-/ws}
+      WS_MAX_PAYLOAD_BYTES: ${WS_MAX_PAYLOAD_BYTES:-16384}
+      WS_HEARTBEAT_INTERVAL_MS: ${WS_HEARTBEAT_INTERVAL_MS:-30000}
+      WS_MAX_CONNECTIONS: ${WS_MAX_CONNECTIONS:-200}
+      WS_RATE_LIMIT_MAX_MESSAGES: ${WS_RATE_LIMIT_MAX_MESSAGES:-30}
+      WS_RATE_LIMIT_WINDOW_MS: ${WS_RATE_LIMIT_WINDOW_MS:-10000}
+      WS_MAX_VIOLATIONS: ${WS_MAX_VIOLATIONS:-5}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-moscowroleplay_voice}
+      POSTGRES_USER: ${POSTGRES_USER:-mrv_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Задайте POSTGRES_PASSWORD в файле .env}
+      POSTGRES_SSL: "false"
+      POSTGRES_SSL_REJECT_UNAUTHORIZED: "true"
+      POSTGRES_POOL_MAX: ${POSTGRES_POOL_MAX:-10}
+      POSTGRES_CONNECTION_TIMEOUT_MS: ${POSTGRES_CONNECTION_TIMEOUT_MS:-5000}
+      POSTGRES_IDLE_TIMEOUT_MS: ${POSTGRES_IDLE_TIMEOUT_MS:-30000}
+      POSTGRES_QUERY_TIMEOUT_MS: ${POSTGRES_QUERY_TIMEOUT_MS:-5000}
+      HEALTH_DB_TIMEOUT_MS: ${HEALTH_DB_TIMEOUT_MS:-3000}
+      MEDIASOUP_LISTEN_IP: ${MEDIASOUP_LISTEN_IP:-0.0.0.0}
+      MEDIASOUP_ANNOUNCED_IP: ${MEDIASOUP_ANNOUNCED_IP:-}
+      MEDIASOUP_RTC_MIN_PORT: ${MEDIASOUP_RTC_MIN_PORT:-40000}
+      MEDIASOUP_RTC_MAX_PORT: ${MEDIASOUP_RTC_MAX_PORT:-40049}
+      MEDIASOUP_WORKER_COUNT: ${MEDIASOUP_WORKER_COUNT:-1}
+    ports:
+      - "${SERVER_PORT:-3000}:${SERVER_PORT:-3000}/tcp"
+      - "${MEDIASOUP_RTC_MIN_PORT:-40000}-${MEDIASOUP_RTC_MAX_PORT:-40049}:${MEDIASOUP_RTC_MIN_PORT:-40000}-${MEDIASOUP_RTC_MAX_PORT:-40049}/udp"
+    healthcheck:
+      test: ["CMD", "node", "server/scripts/healthcheck.js"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  postgres_data:
+    name: moscowroleplay_voice_postgres_data

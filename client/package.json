@@ -1,0 +1,22 @@
+{
+  "name": "@moscowroleplay/voice-client",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Windows-клиент MoscowRoleplay Voice на Electron (безопасный каркас)",
+  "main": "electron/main.js",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "check": "node --check electron/main.js && node --check electron/preload.js && node --check renderer/renderer.js"
+  },
+  "dependencies": {
+    "mediasoup-client": "3.26.0"
+  },
+  "devDependencies": {
+    "electron": "45.2.3"
+  },
+  "license": "UNLICENSED"
+}

@@ -1,0 +1,10 @@
+{
+  "name": "@moscowroleplay/voice-protocol",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Общий протокол WebSocket для сервера и клиента MoscowRoleplay Voice",
+  "type": "module",
+  "exports": {
+    ".": "./protocol.js"
+  }
+}

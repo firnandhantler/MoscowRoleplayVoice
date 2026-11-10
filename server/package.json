@@ -1,0 +1,29 @@
+{
+  "name": "@moscowroleplay/voice-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Серверная часть MoscowRoleplay Voice: HTTP, WebSocket, PostgreSQL и фундамент голосовых модулей",
+  "type": "module",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=24.0.0 <25.0.0"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "migrate": "node src/database/migrate-cli.js",
+    "check": "node scripts/check-syntax.js",
+    "test": "node --test",
+    "verify": "npm run check && npm test"
+  },
+  "dependencies": {
+    "mediasoup": "3.32.2",
+    "pg": "8.23.1",
+    "pino": "10.4.0",
+    "ws": "8.22.2"
+  },
+  "devDependencies": {
+    "pino-pretty": "13.2.0"
+  },
+  "license": "UNLICENSED"
+}

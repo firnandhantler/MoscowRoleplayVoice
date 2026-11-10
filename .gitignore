@@ -1,0 +1,59 @@
+# Секреты и локальная конфигурация
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+credentials/
+*.secret
+
+# Зависимости Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Сборка и временные файлы
+dist/
+build/
+out/
+release/
+coverage/
+.cache/
+tmp/
+temp/
+*.tsbuildinfo
+
+# Electron и упаковка клиента
+client/dist/
+client/out/
+client/release/
+client/.electron/
+
+# Логи и PID-файлы
+logs/
+*.log
+*.pid
+*.pid.lock
+
+# Docker
+.docker/
+docker-compose.override.yml
+
+# Операционная система и IDE
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Локальные дампы и резервные копии базы
+*.dump
+*.sql.gz
+backups/
