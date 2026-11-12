@@ -10,6 +10,8 @@ const COMMON_HEADERS = Object.freeze({
   'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
 });
 
+const HEALTH_PATHS = new Set(['/health', '/health/live', '/health/ready']);
+
 /**
  * Отправляет JSON-ответ с безопасными заголовками.
  *
@@ -56,7 +58,7 @@ export function createHttpServer({ config, logger, database }) {
     res.on('finish', () => {
       const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
       const level =
-        pathname === '/health'
+        HEALTH_PATHS.has(pathname)
           ? 'debug'
           : res.statusCode >= 500
             ? 'error'
@@ -95,7 +97,7 @@ export function createHttpServer({ config, logger, database }) {
 
         pathname = url.pathname;
 
-        if (pathname === '/health') {
+        if (HEALTH_PATHS.has(pathname)) {
           if (method !== 'GET') {
             sendJson(
               res,
@@ -111,7 +113,13 @@ export function createHttpServer({ config, logger, database }) {
             return;
           }
 
-          const health = await healthService.check();
+          // Liveness не обращается к PostgreSQL, readiness проверяет базу.
+          // /health сохранён как readiness-проверка для совместимости с Docker healthcheck.
+          const health =
+            pathname === '/health/live'
+              ? healthService.checkLiveness()
+              : await healthService.checkReadiness();
+
           sendJson(res, health.status === 'ok' ? 200 : 503, health);
           return;
         }
@@ -137,6 +145,8 @@ export function createHttpServer({ config, logger, database }) {
             version: config.appVersion,
             status: 'running',
             health: '/health',
+            healthLiveness: '/health/live',
+            healthReadiness: '/health/ready',
             websocket: config.websocket.path,
           });
           return;

@@ -110,7 +110,7 @@ openssl rand -base64 32
 openssl rand -base64 32
 ```
 
-Первый используйте для `POSTGRES_SUPERUSER_PASSWORD`, второй — для `POSTGRES_PASSWORD`. Не используйте заглушки `change_me_*`.
+Первый используйте для `POSTGRES_SUPERUSER_PASSWORD`, второй — для `POSTGRES_PASSWORD`. Не используйте заглушки `change_me_*`. В production приложение откажется запускаться, если `POSTGRES_PASSWORD` содержит заглушку или совпадает с `POSTGRES_USER` либо `POSTGRES_DB`.
 
 Обязательно проверьте:
 
@@ -125,7 +125,8 @@ POSTGRES_USER=mrv_app
 POSTGRES_PASSWORD=...
 POSTGRES_SUPERUSER=postgres
 POSTGRES_SUPERUSER_PASSWORD=...
-MEDIASOUP_ANNOUNCED_IP=ПУБЛИЧНЫЙ_IP_СЕРВЕРА
+# На этапе фундамента можно оставить пустым; заполнить перед голосовым модулем.
+MEDIASOUP_ANNOUNCED_IP=
 ```
 
 В Docker Compose значения `NODE_ENV`, `SERVER_HOST` и `POSTGRES_HOST` переопределяются на production, `0.0.0.0` и `postgres` соответственно. Это нормально.
@@ -193,6 +194,27 @@ sudo ss -lunp | grep -E '400[0-9][0-9]' || true
 
 Точная проверка появится после реализации mediasoup signaling. Сейчас важно, чтобы диапазон был разрешён в firewall и опубликован Compose.
 
+### 5.4. PostgreSQL SSL
+
+Для внутренней Docker-сети используется `POSTGRES_SSL=false`: трафик не выходит за пределы bridge-сети, а PostgreSQL не публикуется наружу. Это значение уже задано в `docker-compose.yml` и не требует сертификатов.
+
+Если PostgreSQL вынесен на отдельный сервер или доступен через публичную сеть, включите TLS:
+
+```dotenv
+POSTGRES_SSL=true
+POSTGRES_SSL_REJECT_UNAUTHORIZED=true
+```
+
+Требования к публичному подключению:
+
+- сертификат должен быть выпущен доверенным CA или добавлен в доверенные корневые сертификаты контейнера;
+- нельзя отключать проверку сертификата через `POSTGRES_SSL_REJECT_UNAUTHORIZED=false` как постоянное решение;
+- не добавляйте фиктивные или самоподписанные сертификаты «для галочки»;
+- ограничьте `5432/tcp` в firewall и security group провайдера по IP источника;
+- не публикуйте PostgreSQL через Docker Compose без необходимости.
+
+`POSTGRES_SSL=true` не включается автоматически: без корректного TLS-сертификата приложение не сможет подключиться, и это ожидаемое поведение.
+
 ## 6. Первый запуск
 
 Соберите образ:
@@ -213,7 +235,7 @@ docker compose up -d
 docker compose ps
 ```
 
-Оба сервиса должны быть `healthy`. PostgreSQL проверяется через `pg_isready`, приложение — через `GET /health`.
+Оба сервиса должны быть `healthy`. PostgreSQL проверяется через `pg_isready`, приложение — через `GET /health` (readiness, включая доступность базы). Liveness без проверки базы доступен через `GET /health/live`.
 
 Примените миграции:
 
@@ -224,10 +246,12 @@ docker compose exec server node server/src/database/migrate-cli.js
 Проверьте приложение:
 
 ```bash
+curl -fsS http://127.0.0.1:3000/health/live
+curl -fsS http://127.0.0.1:3000/health/ready
 curl -fsS http://127.0.0.1:3000/health
 ```
 
-Ожидается `status: "ok"`. Если ответ `503`, смотрите логи:
+`/health/live` должен вернуть `200` независимо от PostgreSQL. `/health/ready` и `/health` возвращают `200` и `status: "ok"` при доступной базе. Если ответ `503`, смотрите логи:
 
 ```bash
 docker compose logs --tail=100 server
@@ -248,6 +272,8 @@ docker compose logs -f postgres
 ```bash
 docker compose exec server node server/scripts/healthcheck.js
 ```
+
+Скрипт обращается к `/health` и проверяет readiness, включая PostgreSQL. Для диагностики только процесса используйте `curl -fsS http://127.0.0.1:3000/health/live`.
 
 ## 8. Обновление приложения
 
@@ -274,7 +300,7 @@ docker compose exec server node server/src/database/migrate-cli.js
 2. Собрать новый образ.
 3. Применить миграции.
 4. Перезапустить сервер.
-5. Проверить `/health` и логи.
+5. Проверить `/health/live`, `/health/ready` и логи.
 
 Миграции в проекте forward-only: откат схемы автоматически не выполняется. Для отката используйте backup или отдельную миграцию.
 
@@ -365,7 +391,8 @@ docker compose exec -T postgres sh -c \
 
 ```bash
 docker compose start server
-curl -fsS http://127.0.0.1:3000/health
+curl -fsS http://127.0.0.1:3000/health/live
+curl -fsS http://127.0.0.1:3000/health/ready
 ```
 
 ### 10.3. Ежедневный backup через cron
@@ -476,13 +503,14 @@ sudo ss -ltnp | grep ':3000'
 
 - [ ] Docker и Compose установлены.
 - [ ] `.env` создан, пароли заменены, права `600`.
-- [ ] `MEDIASOUP_ANNOUNCED_IP` заполнен публичным IP.
+- [ ] `POSTGRES_PASSWORD` не является заглушкой и не совпадает с `POSTGRES_USER` или `POSTGRES_DB`.
+- [ ] `MEDIASOUP_ANNOUNCED_IP` заполнен публичным IP перед развёртыванием голосового модуля; на этапе фундамента допускается пустое значение.
 - [ ] Firewall разрешает SSH, TCP-порт приложения и UDP-диапазон.
 - [ ] PostgreSQL не опубликован наружу.
 - [ ] `docker compose build` завершился успешно.
 - [ ] `docker compose up -d` поднял оба сервиса.
 - [ ] `docker compose ps` показывает `healthy`.
 - [ ] Миграции применены.
-- [ ] `GET /health` возвращает `200` и `status: "ok"`.
+- [ ] `GET /health/live` возвращает `200`, а `GET /health/ready` и `GET /health` — `200` и `status: "ok"`.
 - [ ] Backup настроен и проверен.
 - [ ] Логи не содержат секретов.

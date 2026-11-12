@@ -149,6 +149,61 @@ function validateDatabaseName(value, name, errors) {
 }
 
 /**
+ * Проверяет, похож ли пароль на заглушку из документации или примера.
+ * Само значение пароля никогда не попадает в сообщение об ошибке.
+ *
+ * @param {string} value
+ * @returns {boolean}
+ */
+function isPlaceholderPassword(value) {
+  const normalized = value.trim().toLowerCase();
+
+  return [
+    'change_me',
+    'change-me',
+    'changeme',
+    'replace_me',
+    'replace-me',
+    'your_password',
+    'your-password',
+    'example_password',
+    'example-password',
+    'placeholder',
+  ].some((prefix) => normalized.startsWith(prefix));
+}
+
+/**
+ * Дополнительные проверки пароля PostgreSQL для production.
+ * В development и test заглушки допустимы, чтобы не усложнять локальный запуск.
+ *
+ * @param {string} password
+ * @param {{nodeEnv: string, user: string, database: string}} context
+ * @param {string[]} errors
+ */
+function validateProductionPassword(password, { nodeEnv, user, database }, errors) {
+  if (nodeEnv !== 'production' || password === '') {
+    return;
+  }
+
+  if (isPlaceholderPassword(password)) {
+    errors.push(
+      'Переменная POSTGRES_PASSWORD не должна содержать пароль-заглушку в production. Задайте уникальный пароль.',
+    );
+  }
+
+  const normalizedPassword = password.toLowerCase();
+
+  if (
+    normalizedPassword === user.toLowerCase() ||
+    normalizedPassword === database.toLowerCase()
+  ) {
+    errors.push(
+      'Переменная POSTGRES_PASSWORD не должна совпадать с POSTGRES_USER или POSTGRES_DB в production.',
+    );
+  }
+}
+
+/**
  * Собирает и валидирует конфигурацию из переданного объекта окружения.
  * Не читает .env и не обращается к process.env, кроме переданного объекта.
  *
@@ -252,6 +307,16 @@ export function buildConfig(env = process.env) {
   if (postgresPassword && postgresPassword.length < 12) {
     errors.push('Переменная POSTGRES_PASSWORD должна содержать не менее 12 символов.');
   }
+
+  validateProductionPassword(
+    postgresPassword,
+    {
+      nodeEnv,
+      user: postgresUser,
+      database: postgresDatabase,
+    },
+    errors,
+  );
 
   const postgresSsl = readBoolean(env, 'POSTGRES_SSL', false, errors);
   const postgresSslRejectUnauthorized = readBoolean(

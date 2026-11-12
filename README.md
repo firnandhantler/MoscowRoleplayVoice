@@ -22,10 +22,11 @@
 
 - Node.js-сервер на ES Modules.
 - Загрузка `.env` и строгая проверка переменных без вывода секретов.
+- В production отклоняются пароли-заглушки и совпадение `POSTGRES_PASSWORD` с `POSTGRES_USER` или `POSTGRES_DB`.
 - Структурированные JSON-логи через `pino` с маскированием чувствительных полей.
 - Подключение к PostgreSQL через пул `pg`.
 - Механизм SQL-миграций с контрольными суммами и блокировкой от одновременного применения.
-- HTTP-сервер с `GET /health`.
+- HTTP-сервер с `GET /health`, `GET /health/live` (liveness) и `GET /health/ready` (readiness).
 - WebSocket-сервер на `ws` с:
   - ограничением размера сообщений;
   - валидацией JSON и полей протокола;
@@ -140,6 +141,7 @@ MoscowRoleplay Voice/
 │       ├── config.test.js
 │       ├── protocol.test.js
 │       ├── health.test.js
+│       ├── http.test.js
 │       └── shutdown.test.js
 ├── client/
 │   ├── package.json
@@ -290,10 +292,10 @@ npm.cmd start
 
 ### 7.7. Проверить health-check
 
-В отдельном терминале:
+Readiness проверяет и HTTP-сервер, и доступность PostgreSQL:
 
 ```powershell
-curl.exe http://127.0.0.1:3000/health
+curl.exe http://127.0.0.1:3000/health/ready
 ```
 
 Ожидается HTTP `200` и JSON:
@@ -313,7 +315,13 @@ curl.exe http://127.0.0.1:3000/health
 }
 ```
 
-Если база недоступна, сервер вернёт HTTP `503` и `status: "degraded"`.
+Liveness проверяет только процесс HTTP-сервера и не обращается к базе:
+
+```powershell
+curl.exe http://127.0.0.1:3000/health/live
+```
+
+Маршрут `GET /health` сохранён для совместимости с Docker healthcheck и работает как readiness-проверка. Если база недоступна, `/health` и `/health/ready` возвращают HTTP `503` и `status: "degraded"`, а `/health/live` продолжает возвращать HTTP `200`, пока процесс сервера жив.
 
 ### 7.8. Проверить WebSocket
 
@@ -370,9 +378,13 @@ docker compose exec server node server/src/database/migrate-cli.js
 ### 8.4. Проверить приложение
 
 ```powershell
+curl.exe http://127.0.0.1:3000/health/live
+curl.exe http://127.0.0.1:3000/health/ready
 curl.exe http://127.0.0.1:3000/health
 docker compose exec server node server/scripts/healthcheck.js
 ```
+
+Docker healthcheck использует `/health` и тем самым проверяет readiness, включая PostgreSQL.
 
 ### 8.5. Смотреть логи
 
@@ -478,6 +490,8 @@ psql -h 127.0.0.1 -p 5432 -U mrv_app -d moscowroleplay_voice -c "SELECT current_
 | `POSTGRES_QUERY_TIMEOUT_MS` | Таймаут запроса | `5000` |
 | `HEALTH_DB_TIMEOUT_MS` | Таймаут проверки БД в health | `3000` |
 
+В `production` приложение не запустится, если `POSTGRES_PASSWORD` содержит заглушку вида `change_me_*` или совпадает с `POSTGRES_USER` либо `POSTGRES_DB`. В `development` и `test` заглушки допустимы для локальной проверки. Сообщение об ошибке содержит только имя переменной, но не её значение.
+
 ### mediasoup (зарезервировано)
 
 | Переменная | Назначение | По умолчанию |
@@ -524,7 +538,8 @@ Get-Content .\server.out.log -Encoding UTF8
 | `npm.ps1 cannot be loaded` | Политика PowerShell | Используйте `npm.cmd` |
 | `Cannot find package 'pino-pretty'` | Нет devDependencies | `npm.cmd install` или `LOG_PRETTY=false` |
 | `ERR_MODULE_NOT_FOUND` для `shared/protocol.js` | Не хватает `shared/package.json` | Проверьте структуру и `type: module` |
-| health возвращает `503` | База недоступна | Логи `module=database`, `docker compose ps` |
+| health возвращает `503` | База недоступна | Логи `module=database`, `docker compose ps`; liveness проверьте через `/health/live` |
+| Сервер не запускается с ошибкой `POSTGRES_PASSWORD` | В production используется заглушка или пароль совпадает с ролью/базой | Задайте уникальный пароль в `.env` |
 | Docker Compose не запускается | Docker Desktop не установлен | Установите Docker Desktop с Linux-контейнерами |
 | Ошибка сборки mediasoup | Нет prebuilt-бинарника | Используйте Linux-контейнер; Python в проект не добавляется |
 
@@ -547,11 +562,11 @@ Get-Content .\server.out.log -Encoding UTF8
 1. Установить Docker Engine и Docker Compose plugin.
 2. Скопировать проект на сервер.
 3. Создать `.env`, выставить права `600`.
-4. Заполнить пароли и `MEDIASOUP_ANNOUNCED_IP`.
+4. Заполнить пароли; `MEDIASOUP_ANNOUNCED_IP` указать перед развёртыванием голосового модуля (на этапе фундамента допускается пустое значение).
 5. Настроить firewall и UDP-диапазон.
 6. Выполнить `docker compose build`, `docker compose up -d`.
 7. Применить миграции.
-8. Проверить `/health` и логи.
+8. Проверить `/health/live`, `/health/ready` и логи.
 
 Подробная инструкция: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 

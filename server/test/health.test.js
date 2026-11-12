@@ -8,7 +8,28 @@ const config = Object.freeze({
   nodeEnv: 'test',
 });
 
-test('health-check возвращает ok при доступной базе', async () => {
+test('liveness возвращает ok и не обращается к базе данных', () => {
+  let databaseCalled = false;
+  const service = createHealthService({
+    config,
+    database: {
+      checkHealth: async () => {
+        databaseCalled = true;
+        throw new Error('База данных не должна вызываться при liveness-проверке.');
+      },
+    },
+  });
+
+  const result = service.checkLiveness();
+
+  assert.equal(result.status, 'ok');
+  assert.equal(result.checks.process.status, 'ok');
+  assert.equal(result.checks.database, undefined);
+  assert.equal(result.service, config.serviceName);
+  assert.equal(databaseCalled, false);
+});
+
+test('readiness возвращает ok при доступной базе', async () => {
   const service = createHealthService({
     config,
     database: {
@@ -16,14 +37,14 @@ test('health-check возвращает ok при доступной базе', 
     },
   });
 
-  const result = await service.check();
+  const result = await service.checkReadiness();
 
   assert.equal(result.status, 'ok');
   assert.equal(result.checks.database.status, 'ok');
   assert.equal(result.service, config.serviceName);
 });
 
-test('health-check возвращает degraded при недоступной базе', async () => {
+test('readiness возвращает degraded при недоступной базе', async () => {
   const service = createHealthService({
     config,
     database: {
@@ -36,7 +57,7 @@ test('health-check возвращает degraded при недоступной �
     },
   });
 
-  const result = await service.check();
+  const result = await service.checkReadiness();
 
   assert.equal(result.status, 'degraded');
   assert.equal(result.checks.database.code, 'database_unavailable');

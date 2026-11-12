@@ -1,5 +1,6 @@
 /**
  * Docker healthcheck: проверяет GET /health.
+ * Маршрут /health является readiness-проверкой и учитывает доступность PostgreSQL.
  * Не требует зависимостей и использует встроенный fetch Node.js.
  */
 const host = process.env.HEALTHCHECK_HOST ?? '127.0.0.1';

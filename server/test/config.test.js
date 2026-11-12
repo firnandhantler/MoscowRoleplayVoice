@@ -82,3 +82,70 @@ test('отключает pino-pretty в production', () => {
 
   assert.equal(config.logPretty, false);
 });
+
+test('разрешает пароль-заглушку в development и test', () => {
+  const config = buildConfig({
+    ...BASE_ENV,
+    NODE_ENV: 'development',
+    POSTGRES_PASSWORD: 'change_me_app_password',
+  });
+
+  assert.equal(config.database.password, 'change_me_app_password');
+});
+
+test('отклоняет пароль-заглушку в production и не выводит его значение', () => {
+  const weakPassword = 'change_me_app_password';
+
+  assert.throws(
+    () =>
+      buildConfig({
+        ...BASE_ENV,
+        NODE_ENV: 'production',
+        POSTGRES_PASSWORD: weakPassword,
+      }),
+    (err) => {
+      assert.equal(err instanceof ConfigError, true);
+      assert.match(err.message, /POSTGRES_PASSWORD/);
+      assert.match(err.message, /пароль-заглушку/);
+      assert.equal(err.message.includes(weakPassword), false);
+      return true;
+    },
+  );
+});
+
+test('отклоняет в production пароль, совпадающий с POSTGRES_USER', () => {
+  assert.throws(
+    () =>
+      buildConfig({
+        ...BASE_ENV,
+        NODE_ENV: 'production',
+        POSTGRES_USER: 'mrv_app_user',
+        POSTGRES_PASSWORD: 'mrv_app_user',
+      }),
+    /совпадать с POSTGRES_USER или POSTGRES_DB/,
+  );
+});
+
+test('отклоняет в production пароль, совпадающий с POSTGRES_DB', () => {
+  assert.throws(
+    () =>
+      buildConfig({
+        ...BASE_ENV,
+        NODE_ENV: 'production',
+        POSTGRES_DB: 'moscowroleplay_voice',
+        POSTGRES_PASSWORD: 'moscowroleplay_voice',
+      }),
+    /совпадать с POSTGRES_USER или POSTGRES_DB/,
+  );
+});
+
+test('принимает в production уникальный пароль достаточной длины', () => {
+  const config = buildConfig({
+    ...BASE_ENV,
+    NODE_ENV: 'production',
+    POSTGRES_PASSWORD: 'StrongUniquePass_2026!',
+  });
+
+  assert.equal(config.nodeEnv, 'production');
+  assert.equal(config.database.password, 'StrongUniquePass_2026!');
+});

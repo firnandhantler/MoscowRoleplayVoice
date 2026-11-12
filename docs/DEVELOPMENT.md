@@ -98,6 +98,8 @@ function New-StrongPassword {
 
 Файл `.env` исключён из Git. Никогда не выводите его содержимое в чат, логи и отчёты. В отчётах допустимо указывать только имена переменных.
 
+В `production` сервер откажется запускаться, если `POSTGRES_PASSWORD` содержит заглушку вида `change_me_*` или совпадает с `POSTGRES_USER` либо `POSTGRES_DB`. В `development` и `test` заглушки допустимы, но для реальной работы используйте сильные уникальные пароли.
+
 ### 2.4. Установить зависимости
 
 ```powershell
@@ -237,9 +239,9 @@ npm.cmd test
 
 Проверяются:
 
-- валидация конфигурации;
+- валидация конфигурации, включая production-запрет паролей-заглушек;
 - протокол WebSocket;
-- health-check;
+- liveness- и readiness-проверки, а также HTTP-маршруты `/health`, `/health/live`, `/health/ready`;
 - менеджер корректной остановки.
 
 ### 4.3. Полная проверка сервера
@@ -253,11 +255,25 @@ npm.cmd run verify
 
 ### 4.4. Health-check
 
+Readiness с проверкой PostgreSQL:
+
+```powershell
+curl.exe -i http://127.0.0.1:3000/health/ready
+```
+
+Liveness без проверки PostgreSQL:
+
+```powershell
+curl.exe -i http://127.0.0.1:3000/health/live
+```
+
+Совместимость с Docker healthcheck:
+
 ```powershell
 curl.exe -i http://127.0.0.1:3000/health
 ```
 
-Ожидается `HTTP 200` и `status: "ok"`. Если PostgreSQL недоступен — `HTTP 503` и `status: "degraded"`.
+Readiness и `/health` возвращают `HTTP 200` и `status: "ok"` при доступной базе. Если PostgreSQL недоступен — `HTTP 503` и `status: "degraded"`. Liveness продолжает возвращать `HTTP 200`, пока процесс HTTP-сервера жив.
 
 ### 4.5. Проверка WebSocket
 
@@ -297,7 +313,7 @@ Set-Location .\server
 node --input-type=module -e "import { createWorker } from 'mediasoup'; const worker = await createWorker({ logLevel: 'warn' }); console.log('worker pid:', worker.pid); await worker.close();"
 ```
 
-На Windows Worker запускался успешно. Это не гарантирует сборку нативных модулей на всех конфигурациях. Для Linux-совместимой проверки используйте Docker или WSL2.
+На Windows Worker запускался успешно. Пакет `mediasoup` при установке скачивает заранее собранный Worker для поддерживаемой платформы; если готового бинарника нет, может потребоваться локальная сборка C++. Python в проект не добавляется. Для Linux-совместимой проверки используйте Docker или WSL2. На текущем этапе Worker, Router и Transport не создаются, а `MEDIASOUP_ANNOUNCED_IP` можно оставить пустым.
 
 ## 5. Структура и правила кода
 
@@ -390,7 +406,8 @@ git check-ignore -v .env
 | `ECONNREFUSED 127.0.0.1:5432` | PostgreSQL не запущен | Запустите базу или проверьте `POSTGRES_PORT` |
 | `password authentication failed` | Неверный пароль или старый том | Проверьте `.env`; при необходимости смените пароль роли |
 | `EADDRINUSE` | Порт занят | Измените `SERVER_PORT` или остановите лишний процесс |
-| `503 degraded` | База недоступна | Смотрите логи `module=database` |
+| `503 degraded` | База недоступна | Смотрите логи `module=database`; liveness проверьте через `/health/live` |
+| Ошибка `POSTGRES_PASSWORD` при запуске | В production используется заглушка или пароль совпадает с ролью/базой | Задайте уникальный пароль |
 | `Cannot find package 'pino-pretty'` | Нет devDependencies | `npm.cmd install` или `LOG_PRETTY=false` |
 | `ERR_MODULE_NOT_FOUND` для `shared/protocol.js` | Повреждена структура `shared` | Проверьте `shared/package.json` и `type: module` |
 | Русский текст в логах искажён | Кодировка консоли | `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8` |
