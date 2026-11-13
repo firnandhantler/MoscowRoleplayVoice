@@ -1,25 +1,20 @@
-# Развёртывание на Ubuntu Server 24.04
+# Развёртывание сервера на Ubuntu Server 24.04
 
-Инструкция описывает развёртывание сервера MoscowRoleplay Voice на VPS: Ubuntu Server 24.04 LTS, Docker Engine, Docker Compose, PostgreSQL в контейнере, HTTPS reverse proxy и UDP-диапазон mediasoup.
+Инструкция описывает развёртывание MoscowRoleplay Voice на VPS: Ubuntu Server 24.04 LTS, Docker Engine, Docker Compose, PostgreSQL в контейнере, HTTPS reverse proxy и UDP-диапазон mediasoup.
+
+Все команды Docker выполняются из папки `server/`, где находятся `docker-compose.yml`, `Dockerfile` и `.env`. Клиентская часть в серверный образ не копируется.
 
 > Проверки в среде разработки: Docker отсутствовал, поэтому `docker compose build` и запуск контейнеров не выполнялись. Конфигурация проверена статически. Перед публичным запуском обязательно пройдите инструкцию на тестовом VPS.
 
 ## 1. Подготовка сервера
 
-Подключитесь по SSH:
-
 ```bash
 ssh user@SERVER_IP
-```
-
-Обновите систему:
-
-```bash
 sudo apt-get update
 sudo apt-get upgrade -y
 ```
 
-Создайте пользователя эксплуатации, если его ещё нет:
+Создайте пользователя эксплуатации:
 
 ```bash
 sudo adduser mrv
@@ -76,7 +71,7 @@ sudo chown mrv:mrv /opt/moscowroleplay-voice
 
 cd /opt
 git clone <URL-репозитория> moscowroleplay-voice
-cd moscowroleplay-voice
+cd moscowroleplay-voice/server
 ```
 
 Не копируйте `.env` из чужой среды. Не коммитьте `.env` в Git.
@@ -97,7 +92,7 @@ openssl rand -base64 32
 
 Первый — `POSTGRES_SUPERUSER_PASSWORD`, второй — `POSTGRES_PASSWORD`. В production приложение откажется запускаться с заглушкой или с паролем, совпадающим с `POSTGRES_USER`/`POSTGRES_DB`.
 
-Минимально необходимые значения для полноценного запуска:
+Минимально необходимые значения:
 
 ```dotenv
 NODE_ENV=production
@@ -132,7 +127,7 @@ MEDIASOUP_ANNOUNCED_IP=203.0.113.10
 - `BLOXLINK_API_KEY` нужен для привязки Roblox; без него proximity недоступен.
 - `PRC_SERVER_KEY` нужен для координат игроков.
 - `MEDIASOUP_ANNOUNCED_IP` — публичный IPv4 VPS. Не `127.0.0.1` и не адрес контейнера.
-- `SESSION_COOKIE_SECURE=true` обязателен в production. Это означает, что вход работает только по HTTPS.
+- `SESSION_COOKIE_SECURE=true` обязателен в production. Вход работает только по HTTPS.
 
 Проверить публичный IP:
 
@@ -176,7 +171,7 @@ Docker управляет iptables и может публиковать порт
 - привяжите TCP-порт приложения к `127.0.0.1`, если используете reverse proxy;
 - UDP-диапазон mediasoup должен быть доступен клиентам напрямую.
 
-Пример override-файла `docker-compose.proxy.yml`:
+Пример `server/docker-compose.proxy.yml`:
 
 ```yaml
 services:
@@ -186,15 +181,13 @@ services:
       - "${MEDIASOUP_RTC_MIN_PORT:-40000}-${MEDIASOUP_RTC_MAX_PORT:-40049}:${MEDIASOUP_RTC_MIN_PORT:-40000}-${MEDIASOUP_RTC_MAX_PORT:-40049}/udp"
 ```
 
-Запуск:
+Запуск из папки `server`:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d
 ```
 
 ### 5.3. Проверка UDP
-
-После запуска:
 
 ```bash
 docker compose ps
@@ -277,6 +270,8 @@ WebSocket идёт по тому же домену и порту `443`, отде
 ## 7. Первый запуск
 
 ```bash
+cd /opt/moscowroleplay-voice/server
+
 docker compose build
 docker compose up -d
 docker compose ps
@@ -287,7 +282,7 @@ docker compose ps
 Примените миграции:
 
 ```bash
-docker compose exec server node server/src/database/migrate-cli.js
+docker compose exec server node src/database/migrate-cli.js
 ```
 
 Проверьте приложение:
@@ -347,13 +342,13 @@ docker compose up -d server
 1. Получите ключ игрового сервера в панели PRC.
 2. Заполните `PRC_SERVER_KEY`.
 3. Убедитесь, что `GAME_POLL_ENABLED=true`.
-4. Проверьте `checks.game` в `/health/ready`:
+4. Проверьте `checks.game`:
 
 ```bash
 curl -fsS https://voice.example.com/health/ready | jq '.checks.game'
 ```
 
-Если `stale: true` или `consecutiveErrors` растёт, смотрите логи:
+Если `stale: true` или `consecutiveErrors` растёт:
 
 ```bash
 docker compose logs -f server | grep game
@@ -361,9 +356,7 @@ docker compose logs -f server | grep game
 
 ### 8.5. Радиоканалы
 
-Отредактируйте `config/radio-channels.json` до сборки образа или смонтируйте файл в контейнер. После изменения пересоберите образ или перезапустите сервер с актуальным файлом.
-
-Формат:
+Отредактируйте `server/config/radio-channels.json` до сборки образа или смонтируйте файл в контейнер. После изменения пересоберите образ или перезапустите сервер с актуальным файлом.
 
 ```json
 {
@@ -383,17 +376,21 @@ docker compose logs -f server | grep game
 
 ## 9. Сборка и выдача клиента
 
-Установщик собирается на Windows:
+Клиент собирается отдельно на Windows из папки `app/`:
 
 ```powershell
-Set-Location .\client
-npm.cmd install
-npm.cmd run dist
+cd app
+npm install
+npm run dist
 ```
 
-Результат: `client\release\MoscowRoleplay-Voice-Setup-0.5.0.exe`.
+Результат:
 
-Перед выдачей пользователям:
+```text
+app\release\MoscowRoleplay-Voice-Setup-0.5.0.exe
+```
+
+Перед выдачей:
 
 1. Установите клиент на тестовый ПК.
 2. Создайте `%APPDATA%\MoscowRoleplay Voice\client-config.json`:
@@ -405,11 +402,11 @@ npm.cmd run dist
 }
 ```
 
-3. Убедитесь, что сертификат HTTPS доверен Windows. Самоподписанный сертификат вызовет ошибку сети.
-4. Проверьте вход, выбор устройств, микрофон и радиоканалы.
+3. Убедитесь, что сертификат HTTPS доверен Windows.
+4. Проверьте вход, устройства, микрофон и радиоканалы.
 5. Раздавайте установщик вместе с инструкцией по `client-config.json`.
 
-Файл `client-config.json` не содержит секретов. Токен сессии хранится в изолированной сессии Electron и недоступен renderer.
+Подробнее: [../../app/docs/DEVELOPMENT.md](../../app/docs/DEVELOPMENT.md).
 
 ## 10. Обновление приложения
 
@@ -419,6 +416,7 @@ npm.cmd run dist
 cd /opt/moscowroleplay-voice
 git pull --ff-only
 
+cd server
 docker compose build server
 docker compose up -d --remove-orphans
 docker compose ps
@@ -427,7 +425,7 @@ docker compose ps
 Миграции:
 
 ```bash
-docker compose exec server node server/src/database/migrate-cli.js
+docker compose exec server node src/database/migrate-cli.js
 ```
 
 Порядок:
@@ -449,6 +447,8 @@ docker image prune -f
 Не используйте `docker system prune -a --volumes` на рабочем сервере.
 
 ## 11. Остановка и перезапуск
+
+Из папки `server`:
 
 ```bash
 docker compose stop
@@ -477,7 +477,7 @@ docker compose down -v
 sudo mkdir -p /var/backups/moscowroleplay-voice
 sudo chown mrv:mrv /var/backups/moscowroleplay-voice
 
-cd /opt/moscowroleplay-voice
+cd /opt/moscowroleplay-voice/server
 
 docker compose exec -T postgres sh -c \
   'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' \
@@ -513,7 +513,7 @@ crontab -e
 ```
 
 ```cron
-0 3 * * * cd /opt/moscowroleplay-voice && docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > /var/backups/moscowroleplay-voice/mrv-$(date +\%F-\%H\%M).dump
+0 3 * * * cd /opt/moscowroleplay-voice/server && docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > /var/backups/moscowroleplay-voice/mrv-$(date +\%F-\%H\%M).dump
 ```
 
 Ротация:
@@ -552,7 +552,7 @@ mediasoup расходует память на каждого участника
 docker compose ps
 docker compose logs --tail=200 server
 docker compose logs --tail=200 postgres
-docker compose exec server node server/scripts/healthcheck.js
+docker compose exec server node scripts/healthcheck.js
 ```
 
 Проверьте:
@@ -607,7 +607,7 @@ docker compose logs --tail=200 postgres
 Проверьте:
 
 - `RADIO_ENABLED=true`;
-- файл `config/radio-channels.json` существует в контейнере;
+- файл `server/config/radio-channels.json` существует в контейнере;
 - для закрытых каналов — `DISCORD_BOT_TOKEN`, Server Members Intent и роли;
 - логи `module=radio` и `module=discord-roles`.
 
@@ -636,6 +636,7 @@ sudo ss -ltnp | grep ':3000'
 ## 16. Чек-лист первого запуска
 
 - [ ] Docker и Compose установлены.
+- [ ] Проект склонирован, команды выполняются из `server/`.
 - [ ] `.env` создан, пароли заменены, права `600`.
 - [ ] `POSTGRES_PASSWORD` не является заглушкой.
 - [ ] `MEDIASOUP_ANNOUNCED_IP` содержит публичный IPv4.
@@ -644,7 +645,7 @@ sudo ss -ltnp | grep ':3000'
 - [ ] `DISCORD_BOT_TOKEN` и Server Members Intent настроены, если нужны закрытые каналы.
 - [ ] `BLOXLINK_API_KEY` и `DISCORD_GUILD_ID` заполнены, если нужна привязка Roblox.
 - [ ] `PRC_SERVER_KEY` заполнен.
-- [ ] `config/radio-channels.json` содержит корректные каналы и роли.
+- [ ] `server/config/radio-channels.json` содержит корректные каналы и роли.
 - [ ] Firewall разрешает SSH, 80/443/tcp и UDP-диапазон.
 - [ ] PostgreSQL не опубликован наружу.
 - [ ] `docker compose build` завершился успешно.

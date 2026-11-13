@@ -2,10 +2,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { isIP } from 'node:net';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MAX_MESSAGE_BYTES, WS_PATH } from '../../../shared/protocol.js';
+import { MAX_MESSAGE_BYTES, WS_PATH } from '../../shared/protocol.js';
 
-/** Корень проекта (папка, в которой находятся server, client, database и shared). */
-export const PROJECT_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
+/** Корень серверной части (папка server, в которой находятся src, config, database и shared). */
+export const PROJECT_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 
 const DEFAULT_ENV_FILE = join(PROJECT_ROOT, '.env');
 const packageJson = JSON.parse(
@@ -29,7 +29,7 @@ export class ConfigError extends Error {
 }
 
 /**
- * Загружает файл .env из корня проекта.
+ * Загружает файл .env из папки server.
  * Уже заданные переменные окружения имеют приоритет над значениями из файла.
  *
  * @param {{path?: string}} options

@@ -7,7 +7,7 @@ const ROOTS = [
   fileURLToPath(new URL('../src/', import.meta.url)),
   fileURLToPath(new URL('../test/', import.meta.url)),
   fileURLToPath(new URL('../scripts/', import.meta.url)),
-  fileURLToPath(new URL('../../shared/', import.meta.url)),
+  fileURLToPath(new URL('../shared/', import.meta.url)),
 ];
 
 const IGNORED_DIRECTORIES = new Set(['node_modules', '.git', 'dist', 'build']);

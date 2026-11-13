@@ -12,7 +12,7 @@
 
 Файлы:
 
-- `channels.js` — загрузка `config/radio-channels.json`;
+- `channels.js` — загрузка `server/config/radio-channels.json`;
 - `engine.js` — участники, говорящий, Consumers, таймер передачи.
 
 Правила:

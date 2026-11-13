@@ -4,7 +4,7 @@ import {
   ProtocolErrorCode,
   ServerMessageType,
   TransportDirection,
-} from '../../../shared/protocol.js';
+} from '../../shared/protocol.js';
 import { AppError } from '../utils/errors.js';
 
 const MAX_AUTH_FAILURES = 3;

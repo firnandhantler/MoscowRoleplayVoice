@@ -16,7 +16,8 @@
     "dev": "npm run build && electron .",
     "pack": "npm run build && electron-builder --win --dir",
     "dist": "npm run build && electron-builder --win nsis",
-    "check": "node scripts/check-syntax.js"
+    "shared:check": "node scripts/check-shared.js",
+    "check": "npm run shared:check && node scripts/check-syntax.js"
   },
   "dependencies": {
     "mediasoup-client": "3.26.0",

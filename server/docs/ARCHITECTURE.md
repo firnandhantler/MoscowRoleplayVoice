@@ -1,6 +1,8 @@
-# Архитектура MoscowRoleplay Voice
+# Архитектура сервера MoscowRoleplay Voice
 
-Документ описывает фактическую архитектуру этапа 5/5: модули сервера, Electron-клиент, протокол, потоки данных и границы системы. Проект рассчитан на один VPS с 1 vCPU и 2 GB RAM, поэтому используется модульный монолит без микросервисов и брокеров сообщений.
+Документ описывает серверную часть MoscowRoleplay Voice: модули, протокол, потоки данных и границы системы. Клиентская часть находится в `app/` и описана в [../../app/docs/DEVELOPMENT.md](../../app/docs/DEVELOPMENT.md).
+
+Проект рассчитан на один VPS с 1 vCPU и 2 GB RAM, поэтому используется модульный монолит без микросервисов и брокеров сообщений.
 
 ## 1. Цели и ограничения
 
@@ -35,7 +37,7 @@
 
 Файл: `server/src/config/index.js`.
 
-- Загружает `.env` из корня проекта; переменные окружения имеют приоритет.
+- Загружает `.env` из папки `server/`; переменные окружения имеют приоритет.
 - Проверяет типы, диапазоны, URL, IP-адреса и взаимные ограничения.
 - Формирует неизменяемый объект конфигурации.
 - Не выводит значения секретов в сообщения об ошибках.
@@ -98,7 +100,7 @@ WebSocket-шлюз на `ws`:
 
 - тот же HTTP-сервер, путь `WS_PATH`;
 - `maxPayload` и запрет двоичных сообщений;
-- парсинг и валидация через `shared/protocol.js`;
+- парсинг и валидация через `server/shared/protocol.js`;
 - ограничение частоты и счётчик нарушений;
 - heartbeat ping/pong;
 - закрытие с кодом `1008` при злоупотреблении;
@@ -224,8 +226,8 @@ Server-side микширования нет: клиент присылает д�
 
 Файлы:
 
-- `radio/channels.js` — загрузка и валидация `config/radio-channels.json`;
-- `radio/engine.js` — доступ, участники, передачи, Consumers.
+- `server/src/radio/channels.js` — загрузка и валидация `server/config/radio-channels.json`;
+- `server/src/radio/engine.js` — доступ, участники, передачи, Consumers.
 
 Модель:
 
@@ -266,7 +268,8 @@ Server-side микширования нет: клиент присылает д�
 
 ## 4. Общий протокол
 
-Файл: `shared/protocol.js`.
+Канонический файл: `server/shared/protocol.js`.
+Копия клиента: `app/shared/protocol.js`.
 
 Формат:
 
@@ -325,62 +328,19 @@ Server-side микширования нет: клиент присылает д�
 | `server.proximity.state` | количество слышимых игроков |
 | `server.game.state` | присутствие и публичные игровые данные |
 
-## 5. Electron-клиент
+Синхронизация копий:
 
-### 5.1. Разделение процессов
+```powershell
+cd server
+npm run shared:sync
+npm run shared:check
+```
 
-Главный процесс (CommonJS):
+`npm run verify` включает проверку совпадения SHA-256.
 
-- окно и безопасность;
-- Discord-вход в отдельном окне и изолированной сессии Electron;
-- чтение HttpOnly-cookie и хранение токена;
-- WebSocket-соединение и переподключение;
-- настройки и глобальные клавиши;
-- IPC whitelist.
+## 5. Потоки выполнения
 
-Renderer (ES Modules, без Node.js):
-
-- интерфейс;
-- mediasoup-client;
-- Web Audio API;
-- PTT и индикаторы.
-
-Такое разделение нужно потому, что mediasoup-client и Web Audio требуют браузерного окружения, а токен и файловая система не должны быть доступны renderer.
-
-### 5.2. Вход
-
-1. Главный процесс открывает `BrowserWindow` с отдельной сессией `persist:mrv-auth`.
-2. Загружается `/auth/discord/start` на сервере.
-3. Навигация разрешена только на сервер и домены Discord по HTTPS.
-4. После `/auth/discord/callback` главный процесс читает cookie `mrv_session`.
-5. Токен проверяется через `/auth/session` и остаётся в главном процессе.
-6. Renderer получает только статус и профиль пользователя.
-
-### 5.3. Голос
-
-- `AudioEngine` захватывает микрофон один раз.
-- Web Audio делит сигнал на два выхода: proximity и radio.
-- `VoiceClient` создаёт send/recv транспорты, два Producer и потребляет входящие Consumers.
-- Входящий звук проходит через `GainNode` и подключается к выбранному устройству вывода.
-- При смене устройства или настроек граф пересобирается.
-- При ошибке транспорта клиент пересоздаёт ресурсы (до 3 попыток за 60 секунд).
-- При выходе из аккаунта захват, PTT и голосовые ресурсы освобождаются.
-
-### 5.4. Настройки и PTT
-
-`settings.json` хранится в `%APPDATA%\MoscowRoleplay Voice`. Значения валидируются и ограничиваются диапазонами; неизвестные поля отбрасываются.
-
-PTT:
-
-- открытый микрофон — оба потока активны;
-- Push-to-Talk — proximity и radio управляются независимо;
-- глобальная клавиша радио работает как переключатель в фоне;
-- удержание клавиши proximity работает при активном окне;
-- при потере фокуса состояние удержания сбрасывается.
-
-## 6. Потоки выполнения
-
-### 6.1. Запуск сервера
+### 5.1. Запуск сервера
 
 ```text
 index.js
@@ -401,7 +361,7 @@ index.js
 
 Ошибка подключения к PostgreSQL останавливает запуск. Ошибка mediasoup не останавливает сервер: голос отключается, остальные функции работают.
 
-### 6.2. Авторизация
+### 5.2. Авторизация
 
 ```text
 Клиент → /auth/discord/start → Discord
@@ -413,7 +373,7 @@ Discord → /auth/discord/callback → проверка state
 Клиент (главный процесс) → читает cookie → /auth/session
 ```
 
-### 6.3. WebSocket-сообщение
+### 5.3. WebSocket-сообщение
 
 ```text
 WebSocket frame
@@ -428,7 +388,7 @@ WebSocket frame
   → ответ или server.error
 ```
 
-### 6.4. Proximity-цикл
+### 5.4. Proximity-цикл
 
 ```text
 PRC poller (500 мс) → GameState
@@ -441,7 +401,7 @@ Proximity Engine (500 мс)
   → signaling → клиенты
 ```
 
-### 6.5. Радиопередача
+### 5.5. Радиопередача
 
 ```text
 client.radio.startTransmission
@@ -456,7 +416,7 @@ client.radio.startTransmission
   → закрытие Consumers
 ```
 
-## 7. Данные и PostgreSQL
+## 6. Данные и PostgreSQL
 
 Таблицы:
 
@@ -471,9 +431,7 @@ client.radio.startTransmission
 - миграции forward-only, с контрольными суммами и advisory lock;
 - окончательная бизнес-схема может расширяться новыми миграциями.
 
-## 8. Безопасность
-
-### Сервер
+## 7. Безопасность
 
 - все входящие сообщения валидируются;
 - размер и частота ограничены;
@@ -485,31 +443,20 @@ client.radio.startTransmission
 - health-check не раскрывает внутренние ошибки;
 - контейнер работает от пользователя `node`, с `no-new-privileges`.
 
-### Electron
+## 8. Docker и mediasoup
 
-- `contextIsolation: true`;
-- `nodeIntegration: false`;
-- `sandbox: true`;
-- `webviewTag: false`;
-- renderer не получает `require`, `ipcRenderer`, файловую систему и токен;
-- preload экспортирует только whitelist;
-- главный процесс проверяет URL отправителя IPC;
-- внешние переходы и новые окна запрещены;
-- разрешён только микрофон для собственного renderer-файла;
-- CSP не разрешает внешние источники и прямые сетевые подключения из renderer.
-
-## 9. Docker и mediasoup
-
+- контекст сборки — папка `server/`; Electron-клиент в образ не попадает;
 - PostgreSQL не публикуется наружу;
 - сервер публикует TCP-порт приложения и UDP-диапазон mediasoup;
-- `config/` копируется в образ, чтобы радиоканалы были доступны;
+- `server/config/` копируется в образ;
+- `server/database/migrations/` копируется в образ;
 - healthcheck проверяет readiness;
 - логи ограничены `10 MB × 3`;
 - bridge-сеть, без `host network`;
 - `MEDIASOUP_ANNOUNCED_IP` обязателен на VPS;
 - UDP-диапазон должен быть открыт в firewall и security group провайдера.
 
-## 10. Точки масштабирования
+## 9. Точки масштабирования
 
 1. **Отдельный voice node.** Вынести mediasoup на другой VPS, оставив control plane на основном сервере.
 2. **Несколько Worker.** Запускать по Worker на ядро; потребуется доработка `MediaSoupManager`.
@@ -520,9 +467,9 @@ client.radio.startTransmission
 
 Все шаги должны сопровождаться измерениями. Инфраструктура «на будущее» не добавляется.
 
-## 11. Границы текущей реализации
+## 10. Границы текущей реализации
 
-Реализовано: Discord OAuth2, Bloxlink, Roblox Users API, PRC polling, Proximity Engine, Radio Engine, mediasoup signaling, передача голоса, PTT, Electron UI, сборка `.exe`, Docker Compose.
+Реализовано: Discord OAuth2, Bloxlink, Roblox Users API, PRC polling, Proximity Engine, Radio Engine, mediasoup signaling, передача голоса, Electron UI, сборка `.exe`, Docker Compose.
 
 Не реализовано:
 

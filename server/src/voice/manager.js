@@ -1,5 +1,5 @@
 import { AppError } from '../utils/errors.js';
-import { AudioSource, TransportDirection } from '../../../shared/protocol.js';
+import { AudioSource, TransportDirection } from '../../shared/protocol.js';
 
 /** Защита от исчерпания ресурсов одним клиентом. */
 const MAX_PRODUCERS_PER_PEER = 2;

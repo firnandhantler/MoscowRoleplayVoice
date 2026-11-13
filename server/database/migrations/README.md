@@ -7,10 +7,10 @@ cd server
 npm.cmd run migrate
 ```
 
-В Docker:
+В Docker (команда выполняется из папки `server`):
 
 ```powershell
-docker compose exec server node server/src/database/migrate-cli.js
+docker compose exec server node src/database/migrate-cli.js
 ```
 
 ## Правила

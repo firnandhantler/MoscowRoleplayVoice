@@ -6,4 +6,4 @@
  * включать в браузерную сборку без изменений.
  */
 
-export * from '../../../../shared/protocol.js';
+export * from '../../../shared/protocol.js';

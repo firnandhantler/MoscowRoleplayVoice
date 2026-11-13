@@ -1,5 +1,5 @@
 import { AppError } from '../utils/errors.js';
-import { AudioSource } from '../../../shared/protocol.js';
+import { AudioSource } from '../../shared/protocol.js';
 
 /**
  * Радиосистема (режим both-dual).

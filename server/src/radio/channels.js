@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 const ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const SNOWFLAKE_PATTERN = /^[0-9]{17,20}$/;
 
-const DEFAULT_PATH = fileURLToPath(new URL('../../../config/radio-channels.json', import.meta.url));
+const DEFAULT_PATH = fileURLToPath(new URL('../../config/radio-channels.json', import.meta.url));
 
 /**
  * Ошибка конфигурации радиоканалов. Сообщение содержит имя файла и причину,

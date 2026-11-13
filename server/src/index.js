@@ -1,4 +1,4 @@
-import { ServerMessageType } from '../../shared/protocol.js';
+import { ServerMessageType } from '../shared/protocol.js';
 import { loadConfig } from './config/index.js';
 import { createDatabase } from './database/pool.js';
 import { createHttpServer } from './http/server.js';

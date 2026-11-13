@@ -8,7 +8,7 @@ import {
   ServerMessageType,
   createServerMessage,
   parseClientMessage,
-} from '../../shared/protocol.js';
+} from '../shared/protocol.js';
 
 test('принимает корректный client.ping', () => {
   const result = parseClientMessage(

@@ -2,7 +2,7 @@
   "name": "@moscowroleplay/voice-server",
   "version": "0.5.0",
   "private": true,
-  "description": "Серверная часть MoscowRoleplay Voice: HTTP, WebSocket, PostgreSQL и фундамент голосовых модулей",
+  "description": "Серверная часть MoscowRoleplay Voice: HTTP, WebSocket, PostgreSQL, mediasoup, proximity и radio",
   "type": "module",
   "main": "src/index.js",
   "engines": {
@@ -13,8 +13,10 @@
     "dev": "node --watch src/index.js",
     "migrate": "node src/database/migrate-cli.js",
     "check": "node scripts/check-syntax.js",
+    "shared:sync": "node scripts/sync-shared.js",
+    "shared:check": "node scripts/sync-shared.js --check",
     "test": "node --test",
-    "verify": "npm run check && npm test"
+    "verify": "npm run check && npm run shared:check && npm test"
   },
   "dependencies": {
     "mediasoup": "3.32.2",

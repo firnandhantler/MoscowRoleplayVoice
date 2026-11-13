@@ -22,19 +22,9 @@ MoscowRoleplay Voice — голосовая система для Roblox ER:LC �
 - Windows-клиент с графическим интерфейсом;
 - серверную проверку прав и обработку голосовых соединений.
 
-**Текущий этап — только фундамент.** На этом этапе запрещено реализовывать:
+**Текущий статус — этап 5/5: интеграция сервера и клиента завершена.** Реализованы Discord OAuth2, Bloxlink, PRC API V2, Proximity Engine, Radio Engine, PTT, mediasoup signaling, интерфейс Electron и передача голоса.
 
-- Discord OAuth2;
-- Bloxlink API;
-- PRC API V2;
-- Proximity Engine;
-- Radio Engine;
-- PTT;
-- mediasoup signaling;
-- полноценный интерфейс Electron;
-- передачу голоса.
-
-Не переходить к следующему этапу без прямой команды владельца проекта.
+Проект разделён на две независимые части: `app/` — Windows-клиент, `server/` — сервер и его развёртывание. Новые крупные этапы, изменение архитектуры и добавление технологий — только по прямой команде владельца проекта.
 
 ## 3. Технологический стек
 
@@ -69,8 +59,8 @@ MoscowRoleplay Voice — голосовая система для Roblox ER:LC �
   - `websocket` — WebSocket-транспорт и валидация сообщений;
   - `monitoring` — health-check и наблюдаемость;
   - `utils` — общие утилиты без бизнес-логики;
-  - `auth`, `game`, `voice`, `proximity`, `radio` — зарезервированные границы будущих модулей.
-- Общий протокол клиента и сервера находится в `shared/protocol.js`. Не дублировать формат сообщений в разных местах.
+  - `auth`, `game`, `voice`, `proximity`, `radio` — реализованные бизнес-модули.
+- Общий протокол клиента и сервера: канонический `server/shared/protocol.js`, копия `app/shared/protocol.js`. Не дублировать формат сообщений в разных местах. Синхронизация — `npm run shared:sync` в папке `server`.
 - Зависимости между модулями должны быть направлены от инфраструктуры к бизнес-логике. Бизнес-модули не должны напрямую управлять HTTP-сервером или пулом PostgreSQL.
 - Не создавать фиктивные реализации mediasoup, Discord, Bloxlink или PRC API. Если функция ещё не реализована, это должно быть явно задокументировано, а не имитировано.
 - Не хранить игровые координаты и временные игровые метрики в PostgreSQL при каждом обновлении. Для оперативных данных в будущем использовать память процесса или специализированное хранилище только после доказанной необходимости.
@@ -125,7 +115,7 @@ MoscowRoleplay Voice — голосовая система для Roblox ER:LC �
 
 1. Перед изменениями выполнить `git status`.
 2. Не трогать чужие незакоммиченные изменения.
-3. Делать осмысленные коммиты на русском или английском языке в формате Conventional Commits, например `feat: создать фундамент сервера`.
+3. Делать осмысленные коммиты на русском или английском языке в формате Conventional Commits, например `feat: завершить интеграцию сервера и клиента`.
 4. Не коммитить `.env`, секреты, `node_modules`, логи, дампы базы.
 5. Не использовать `git reset --hard`, `git push --force`, rebase опубликованной истории и другие необратимые операции без прямого согласия.
 6. После завершения этапа показать список изменённых файлов и подготовить отдельный коммит.
@@ -158,26 +148,38 @@ MoscowRoleplay Voice — голосовая система для Roblox ER:LC �
 .
 ├── AGENTS.md
 ├── opencode.json
-├── docker-compose.yml
-├── docker-compose.dev.yml
-├── .env.example
 ├── README.md
-├── docs/
-├── server/
-│   ├── Dockerfile
-│   ├── package.json
-│   └── src/
-├── client/
-│   ├── package.json
+├── .gitignore
+├── app/
+│   ├── assets/
+│   ├── docs/
 │   ├── electron/
 │   ├── renderer/
-│   └── assets/
-├── database/
-│   ├── init/
-│   └── migrations/
-└── shared/
-    └── protocol.js
+│   ├── scripts/
+│   ├── shared/
+│   ├── release/
+│   ├── package.json
+│   └── package-lock.json
+└── server/
+    ├── config/
+    ├── database/
+    │   ├── init/
+    │   └── migrations/
+    ├── docs/
+    ├── scripts/
+    ├── shared/
+    ├── src/
+    ├── test/
+    ├── .dockerignore
+    ├── .env.example
+    ├── Dockerfile
+    ├── docker-compose.yml
+    ├── docker-compose.dev.yml
+    ├── package.json
+    └── package-lock.json
 ```
+
+`app/release/`, `app/renderer/dist/`, `node_modules/` и `.env` не коммитятся.
 
 ## 11. Определение готовности изменения
 

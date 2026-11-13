@@ -21,6 +21,7 @@ const COMMONJS_DIRECTORIES = [
 ];
 const ES_MODULE_DIRECTORIES = [
   path.join(ROOT, 'renderer', 'src'),
+  path.join(ROOT, 'shared'),
 ];
 const IGNORED_DIRECTORIES = new Set(['node_modules', 'dist', 'release', 'build']);
 

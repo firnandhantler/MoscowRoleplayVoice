@@ -1,4 +1,4 @@
-import { AudioSource } from '../../../shared/protocol.js';
+import { AudioSource } from '../../shared/protocol.js';
 
 /**
  * Proximity Engine — серверная логика «кто кого слышит по расстоянию».

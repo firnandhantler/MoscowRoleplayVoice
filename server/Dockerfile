@@ -1,6 +1,8 @@
 # syntax=docker/dockerfile:1
 
-# Сборка зависимостей сервера.
+# Контекст сборки — папка server/. Клиентские файлы и зависимости
+# Electron в серверный образ не попадают.
+#
 # mediasoup устанавливает заранее собранный worker для поддерживаемой платформы.
 # Если готового бинарника нет, потребуется локальная сборка C++; Python в проект
 # не добавляется по требованиям задания.
@@ -8,10 +10,9 @@ FROM node:24-bookworm-slim AS dependencies
 
 WORKDIR /app
 
-COPY server/package.json server/package-lock.json ./server/
+COPY package.json package-lock.json ./
 
-RUN cd server \
-    && npm ci --omit=dev --no-audit --no-fund \
+RUN npm ci --omit=dev --no-audit --no-fund \
     && npm cache clean --force
 
 # Runtime-образ.
@@ -25,10 +26,10 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends tini \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=dependencies /app/server/node_modules ./server/node_modules
-COPY server/package.json ./server/package.json
-COPY server/src ./server/src
-COPY server/scripts ./server/scripts
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY package.json ./package.json
+COPY src ./src
+COPY scripts ./scripts
 COPY shared ./shared
 COPY database/migrations ./database/migrations
 # Список радиоканалов читается из config/radio-channels.json.
@@ -40,7 +41,7 @@ EXPOSE 3000
 
 # UDP-диапазон mediasoup публикуется через docker-compose.yml.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
-  CMD ["node", "server/scripts/healthcheck.js"]
+  CMD ["node", "scripts/healthcheck.js"]
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["node", "server/src/index.js"]
+CMD ["node", "src/index.js"]

@@ -2,6 +2,9 @@
 .env
 .env.*
 !.env.example
+opencode.json
+todo.txt
+app/client-config.json
 *.pem
 *.key
 *.p12
@@ -29,10 +32,11 @@ temp/
 *.tsbuildinfo
 
 # Electron и упаковка клиента
-client/dist/
-client/out/
-client/release/
-client/.electron/
+app/dist/
+app/out/
+app/release/
+app/.electron/
+app/renderer/dist/
 
 # Логи и PID-файлы
 logs/

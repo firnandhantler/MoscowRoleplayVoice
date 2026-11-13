@@ -6,7 +6,7 @@ import {
   ServerMessageType,
   createServerMessage,
   parseClientMessage,
-} from '../../../shared/protocol.js';
+} from '../../shared/protocol.js';
 
 const CLOSE_CODES = Object.freeze({
   GOING_AWAY: 1001,

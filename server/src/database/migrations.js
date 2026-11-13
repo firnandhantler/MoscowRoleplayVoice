@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const DEFAULT_MIGRATIONS_DIR = fileURLToPath(
-  new URL('../../../database/migrations/', import.meta.url),
+  new URL('../../database/migrations/', import.meta.url),
 );
 
 // Произвольный, но постоянный идентификатор блокировки PostgreSQL.

@@ -1,0 +1,37 @@
+# Контекст сборки — папка server/.
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+
+node_modules
+**/node_modules
+
+docs
+test
+README.md
+AGENTS.md
+opencode.json
+docker-compose*.yml
+Dockerfile
+
+# Эти скрипты нужны только при локальной разработке.
+scripts/check-syntax.js
+scripts/sync-shared.js
+
+# init-скрипты выполняет контейнер PostgreSQL, а не серверный образ.
+database/init
+
+logs
+*.log
+backups
+coverage
+tmp
+temp
+.cache
+
+.vscode
+.idea
+.DS_Store
+Thumbs.db
