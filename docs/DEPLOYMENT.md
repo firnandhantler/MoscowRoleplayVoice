@@ -1,8 +1,8 @@
 # Развёртывание на Ubuntu Server 24.04
 
-Инструкция рассчитана на VPS: 1 vCPU, 2 GB RAM, Ubuntu Server 24.04 LTS, Docker. Проект использует модульный монолит и один контейнер приложения.
+Инструкция описывает развёртывание сервера MoscowRoleplay Voice на VPS: Ubuntu Server 24.04 LTS, Docker Engine, Docker Compose, PostgreSQL в контейнере, HTTPS reverse proxy и UDP-диапазон mediasoup.
 
-> Проверки в текущей среде разработки: Docker отсутствовал, поэтому команды Docker Compose на реальном сервере ещё не выполнялись. Конфигурация проверена статически. Перед публичным запуском выполните инструкцию на тестовом VPS.
+> Проверки в среде разработки: Docker отсутствовал, поэтому `docker compose build` и запуск контейнеров не выполнялись. Конфигурация проверена статически. Перед публичным запуском обязательно пройдите инструкцию на тестовом VPS.
 
 ## 1. Подготовка сервера
 
@@ -19,18 +19,16 @@ sudo apt-get update
 sudo apt-get upgrade -y
 ```
 
-Создайте отдельного пользователя для эксплуатации, если его ещё нет:
+Создайте пользователя эксплуатации, если его ещё нет:
 
 ```bash
 sudo adduser mrv
 sudo usermod -aG sudo mrv
 ```
 
-Настройте вход по SSH-ключу и отключите парольный вход, если это допускает ваш провайдер. Не публикуйте приватные ключи в проекте.
+Настройте вход по SSH-ключу и отключите парольный вход, если это допускает провайдер. Приватные ключи не должны попадать в проект.
 
 ## 2. Установка Docker Engine и Docker Compose plugin
-
-Официальные команды для Ubuntu:
 
 ```bash
 sudo apt-get update
@@ -60,7 +58,7 @@ sudo systemctl enable --now docker
 sudo usermod -aG docker mrv
 ```
 
-Выйдите из сессии и войдите снова, чтобы группа применилась. Проверьте:
+Выйдите и войдите снова. Проверьте:
 
 ```bash
 docker --version
@@ -72,66 +70,69 @@ docker run --rm hello-world
 
 ## 3. Размещение проекта
 
-Рекомендуемый каталог:
-
 ```bash
 sudo mkdir -p /opt/moscowroleplay-voice
 sudo chown mrv:mrv /opt/moscowroleplay-voice
-```
 
-Скопируйте проект одним из способов:
-
-```bash
 cd /opt
 git clone <URL-репозитория> moscowroleplay-voice
+cd moscowroleplay-voice
 ```
 
-или через `rsync`/`scp` с рабочей машины. Не копируйте `.env` из чужой среды.
-
-Перейдите в каталог:
-
-```bash
-cd /opt/moscowroleplay-voice
-```
+Не копируйте `.env` из чужой среды. Не коммитьте `.env` в Git.
 
 ## 4. Настройка `.env`
-
-Создайте файл из примера:
 
 ```bash
 cp .env.example .env
 chmod 600 .env
 ```
 
-Сгенерируйте пароли:
+Сгенерируйте два пароля:
 
 ```bash
 openssl rand -base64 32
 openssl rand -base64 32
 ```
 
-Первый используйте для `POSTGRES_SUPERUSER_PASSWORD`, второй — для `POSTGRES_PASSWORD`. Не используйте заглушки `change_me_*`. В production приложение откажется запускаться, если `POSTGRES_PASSWORD` содержит заглушку или совпадает с `POSTGRES_USER` либо `POSTGRES_DB`.
+Первый — `POSTGRES_SUPERUSER_PASSWORD`, второй — `POSTGRES_PASSWORD`. В production приложение откажется запускаться с заглушкой или с паролем, совпадающим с `POSTGRES_USER`/`POSTGRES_DB`.
 
-Обязательно проверьте:
+Минимально необходимые значения для полноценного запуска:
 
 ```dotenv
-NODE_ENV=development
-SERVER_HOST=127.0.0.1
-SERVER_PORT=3000
-POSTGRES_HOST=127.0.0.1
-POSTGRES_PORT=5432
+NODE_ENV=production
+
+POSTGRES_SUPERUSER=postgres
+POSTGRES_SUPERUSER_PASSWORD=...
 POSTGRES_DB=moscowroleplay_voice
 POSTGRES_USER=mrv_app
 POSTGRES_PASSWORD=...
-POSTGRES_SUPERUSER=postgres
-POSTGRES_SUPERUSER_PASSWORD=...
-# На этапе фундамента можно оставить пустым; заполнить перед голосовым модулем.
-MEDIASOUP_ANNOUNCED_IP=
+
+SERVER_HOST=0.0.0.0
+SERVER_PORT=3000
+TRUST_PROXY=true
+
+DISCORD_CLIENT_ID=...
+DISCORD_CLIENT_SECRET=...
+DISCORD_REDIRECT_URI=https://voice.example.com/auth/discord/callback
+DISCORD_GUILD_ID=...
+DISCORD_BOT_TOKEN=...
+BLOXLINK_API_KEY=...
+PRC_SERVER_KEY=...
+
+SESSION_COOKIE_SECURE=true
+
+MEDIASOUP_ANNOUNCED_IP=203.0.113.10
 ```
 
-В Docker Compose значения `NODE_ENV`, `SERVER_HOST` и `POSTGRES_HOST` переопределяются на production, `0.0.0.0` и `postgres` соответственно. Это нормально.
+Пояснения:
 
-`MEDIASOUP_ANNOUNCED_IP` на текущем этапе не используется, но должен быть заполнен до реализации голосового модуля. Укажите публичный IPv4 VPS, который видят клиенты. Не указывайте `127.0.0.1` или внутренний IP Docker.
+- `DISCORD_*` можно оставить пустыми, но тогда вход через Discord отключён, а голосовой клиент не сможет авторизоваться.
+- `DISCORD_BOT_TOKEN` нужен только для закрытых радиоканалов.
+- `BLOXLINK_API_KEY` нужен для привязки Roblox; без него proximity недоступен.
+- `PRC_SERVER_KEY` нужен для координат игроков.
+- `MEDIASOUP_ANNOUNCED_IP` — публичный IPv4 VPS. Не `127.0.0.1` и не адрес контейнера.
+- `SESSION_COOKIE_SECURE=true` обязателен в production. Это означает, что вход работает только по HTTPS.
 
 Проверить публичный IP:
 
@@ -139,19 +140,18 @@ MEDIASOUP_ANNOUNCED_IP=
 curl -4 https://ifconfig.me
 ```
 
-Сверьте результат с панелью провайдера. Не полагайтесь только на внешний сервис.
+Сверьте результат с панелью провайдера.
 
 ## 5. Firewall и UDP
 
 ### 5.1. UFW
 
-Пример:
-
 ```bash
 sudo ufw default deny incoming
 sudo ufw default allow outgoing
 sudo ufw allow 22/tcp
-sudo ufw allow 3000/tcp
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
 sudo ufw allow 40000:40049/udp
 sudo ufw enable
 sudo ufw status verbose
@@ -160,82 +160,129 @@ sudo ufw status verbose
 Порты:
 
 - `22/tcp` — SSH;
-- `3000/tcp` — HTTP/WebSocket;
-- `40000-40049/udp` — будущий mediasoup RTC.
+- `80/tcp` — ACME/redirect на HTTPS;
+- `443/tcp` — HTTPS и WebSocket через reverse proxy;
+- `40000-40049/udp` — mediasoup RTC;
+- `3000/tcp` — только локально для reverse proxy.
 
-Если SSH работает на другом порту, сначала разрешите его, чтобы не потерять доступ.
+Если SSH работает на другом порту, сначала разрешите его.
 
-### 5.2. Важно про Docker и UFW
+### 5.2. Docker и UFW
 
-Docker управляет правилами iptables и может публиковать контейнерные порты в обход ожидаемой логики UFW. Поэтому:
+Docker управляет iptables и может публиковать порты в обход UFW. Поэтому:
 
-- дополнительно настройте firewall/security group у облачного провайдера;
+- настройте firewall/security group у облачного провайдера;
 - не публикуйте PostgreSQL;
-- до появления TLS-прокси ограничьте доступ к `3000/tcp` по IP или закройте его для публики;
-- для будущего production-варианта привяжите порт приложения к `127.0.0.1` и поставьте reverse proxy с TLS.
+- привяжите TCP-порт приложения к `127.0.0.1`, если используете reverse proxy;
+- UDP-диапазон mediasoup должен быть доступен клиентам напрямую.
 
-Пример привязки только к localhost (изменение в `docker-compose.yml` или override-файле):
+Пример override-файла `docker-compose.proxy.yml`:
 
 ```yaml
-ports:
-  - "127.0.0.1:3000:3000/tcp"
+services:
+  server:
+    ports:
+      - "127.0.0.1:${SERVER_PORT:-3000}:${SERVER_PORT:-3000}/tcp"
+      - "${MEDIASOUP_RTC_MIN_PORT:-40000}-${MEDIASOUP_RTC_MAX_PORT:-40049}:${MEDIASOUP_RTC_MIN_PORT:-40000}-${MEDIASOUP_RTC_MAX_PORT:-40049}/udp"
 ```
 
-UDP-диапазон mediasoup должен быть доступен голосовым клиентам напрямую. Если VPS находится за NAT, настройте проброс UDP на уровне провайдера.
+Запуск:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d
+```
 
 ### 5.3. Проверка UDP
 
-После запуска контейнеров:
+После запуска:
 
 ```bash
 docker compose ps
 sudo ss -lunp | grep -E '400[0-9][0-9]' || true
 ```
 
-Точная проверка появится после реализации mediasoup signaling. Сейчас важно, чтобы диапазон был разрешён в firewall и опубликован Compose.
+Реальная проверка голоса требует двух клиентов и открытого UDP-диапазона. Локальный `ss` подтверждает только то, что порты заняты процессом.
 
 ### 5.4. PostgreSQL SSL
 
-Для внутренней Docker-сети используется `POSTGRES_SSL=false`: трафик не выходит за пределы bridge-сети, а PostgreSQL не публикуется наружу. Это значение уже задано в `docker-compose.yml` и не требует сертификатов.
+Внутри Docker-сети используется `POSTGRES_SSL=false`: трафик не выходит за пределы bridge-сети, PostgreSQL не публикуется наружу.
 
-Если PostgreSQL вынесен на отдельный сервер или доступен через публичную сеть, включите TLS:
+Если база вынесена на отдельный сервер:
 
 ```dotenv
 POSTGRES_SSL=true
 POSTGRES_SSL_REJECT_UNAUTHORIZED=true
 ```
 
-Требования к публичному подключению:
+Требования:
 
-- сертификат должен быть выпущен доверенным CA или добавлен в доверенные корневые сертификаты контейнера;
-- нельзя отключать проверку сертификата через `POSTGRES_SSL_REJECT_UNAUTHORIZED=false` как постоянное решение;
-- не добавляйте фиктивные или самоподписанные сертификаты «для галочки»;
-- ограничьте `5432/tcp` в firewall и security group провайдера по IP источника;
-- не публикуйте PostgreSQL через Docker Compose без необходимости.
+- доверенный сертификат или добавленный в контейнер корневой CA;
+- нельзя отключать проверку сертификата как постоянное решение;
+- ограничьте `5432/tcp` по IP источника;
+- не публикуйте PostgreSQL через Compose без необходимости.
 
-`POSTGRES_SSL=true` не включается автоматически: без корректного TLS-сертификата приложение не сможет подключиться, и это ожидаемое поведение.
+## 6. HTTPS reverse proxy
 
-## 6. Первый запуск
+Для Discord OAuth2 и `Secure`-cookie нужен HTTPS. Пример nginx:
 
-Соберите образ:
+```nginx
+map $http_upgrade $connection_upgrade {
+  default upgrade;
+  ''      close;
+}
+
+server {
+  listen 80;
+  server_name voice.example.com;
+  return 301 https://$host$request_uri;
+}
+
+server {
+  listen 443 ssl http2;
+  server_name voice.example.com;
+
+  ssl_certificate     /etc/letsencrypt/live/voice.example.com/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/voice.example.com/privkey.pem;
+
+  location / {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host $host;
+
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+  }
+}
+```
+
+После настройки:
+
+```dotenv
+TRUST_PROXY=true
+DISCORD_REDIRECT_URI=https://voice.example.com/auth/discord/callback
+```
+
+`TRUST_PROXY=true` разрешает серверу учитывать `X-Forwarded-For` и `X-Forwarded-Host` при ограничении частоты и проверке Origin. Не включайте его, если прокси нет.
+
+WebSocket идёт по тому же домену и порту `443`, отдельный порт не нужен. UDP-диапазон mediasoup через nginx не проксируется.
+
+## 7. Первый запуск
 
 ```bash
 docker compose build
-```
-
-Запустите контейнеры:
-
-```bash
 docker compose up -d
-```
-
-Проверьте состояние:
-
-```bash
 docker compose ps
 ```
 
-Оба сервиса должны быть `healthy`. PostgreSQL проверяется через `pg_isready`, приложение — через `GET /health` (readiness, включая доступность базы). Liveness без проверки базы доступен через `GET /health/live`.
+Оба сервиса должны быть `healthy`. PostgreSQL проверяется через `pg_isready`, приложение — через readiness.
 
 Примените миграции:
 
@@ -248,36 +295,125 @@ docker compose exec server node server/src/database/migrate-cli.js
 ```bash
 curl -fsS http://127.0.0.1:3000/health/live
 curl -fsS http://127.0.0.1:3000/health/ready
-curl -fsS http://127.0.0.1:3000/health
+curl -fsS https://voice.example.com/health/ready
 ```
 
-`/health/live` должен вернуть `200` независимо от PostgreSQL. `/health/ready` и `/health` возвращают `200` и `status: "ok"` при доступной базе. Если ответ `503`, смотрите логи:
+Readiness возвращает `200` и `status: "ok"` при доступной базе. Блоки `checks.game` и `checks.voice` могут быть `degraded`, если PRC или mediasoup недоступны, но это не делает сервер неготовым.
+
+Если ответ `503`:
 
 ```bash
 docker compose logs --tail=100 server
 docker compose logs --tail=100 postgres
 ```
 
-## 7. Просмотр логов
+## 8. Настройка интеграций
+
+### 8.1. Discord OAuth2
+
+1. Создайте приложение в Discord Developer Portal.
+2. В **OAuth2** добавьте redirect URI:
+   `https://voice.example.com/auth/discord/callback`.
+3. Заполните `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI`.
+4. Укажите `DISCORD_GUILD_ID`.
+5. Перезапустите сервер:
 
 ```bash
-docker compose logs -f server
-docker compose logs -f postgres
+docker compose up -d server
 ```
 
-Логи приложения — структурированный JSON. В production `LOG_PRETTY` принудительно отключён. Ротация настроена в Compose: `10 MB` на файл, до `3` файлов.
+Проверка: откройте в браузере `https://voice.example.com/auth/discord/start`. Должна открыться страница Discord. Если сервер отвечает `auth_disabled`, переменные OAuth2 заданы не полностью.
 
-Проверить health из контейнера:
+### 8.2. Discord-бот
+
+1. Создайте бота в приложении и скопируйте токен в `DISCORD_BOT_TOKEN`.
+2. Включите **Server Members Intent**.
+3. Пригласите бота на сервер `DISCORD_GUILD_ID` с правом просматривать участников.
+4. Проверьте, что бот видит участников и роли.
+
+Без бота открытые каналы работают, закрытые — нет. В логе будет предупреждение.
+
+### 8.3. Bloxlink
+
+1. Установите Bloxlink на Discord-сервер проекта.
+2. Получите ключ Server API в панели Bloxlink.
+3. Заполните `BLOXLINK_API_KEY` и `DISCORD_GUILD_ID`.
+4. Перезапустите сервер.
+
+Пользователь должен состоять на сервере и иметь привязку Roblox в Bloxlink. Ключ может требовать платного тарифа Bloxlink. Без ключа вход работает, но `robloxId` пуст и proximity недоступен.
+
+### 8.4. PRC ER:LC API V2
+
+1. Получите ключ игрового сервера в панели PRC.
+2. Заполните `PRC_SERVER_KEY`.
+3. Убедитесь, что `GAME_POLL_ENABLED=true`.
+4. Проверьте `checks.game` в `/health/ready`:
 
 ```bash
-docker compose exec server node server/scripts/healthcheck.js
+curl -fsS https://voice.example.com/health/ready | jq '.checks.game'
 ```
 
-Скрипт обращается к `/health` и проверяет readiness, включая PostgreSQL. Для диагностики только процесса используйте `curl -fsS http://127.0.0.1:3000/health/live`.
+Если `stale: true` или `consecutiveErrors` растёт, смотрите логи:
 
-## 8. Обновление приложения
+```bash
+docker compose logs -f server | grep game
+```
 
-Перед обновлением сделайте резервную копию базы (раздел 10).
+### 8.5. Радиоканалы
+
+Отредактируйте `config/radio-channels.json` до сборки образа или смонтируйте файл в контейнер. После изменения пересоберите образ или перезапустите сервер с актуальным файлом.
+
+Формат:
+
+```json
+{
+  "channels": [
+    {
+      "id": "police",
+      "name": "Полиция",
+      "description": "Канал сотрудников полиции",
+      "roleIds": ["123456789012345678"],
+      "priority": 1
+    }
+  ]
+}
+```
+
+Пустой `roleIds` — открытый канал. Для закрытых каналов нужен бот и корректные ID ролей.
+
+## 9. Сборка и выдача клиента
+
+Установщик собирается на Windows:
+
+```powershell
+Set-Location .\client
+npm.cmd install
+npm.cmd run dist
+```
+
+Результат: `client\release\MoscowRoleplay-Voice-Setup-0.5.0.exe`.
+
+Перед выдачей пользователям:
+
+1. Установите клиент на тестовый ПК.
+2. Создайте `%APPDATA%\MoscowRoleplay Voice\client-config.json`:
+
+```json
+{
+  "serverUrl": "https://voice.example.com",
+  "wsPath": "/ws"
+}
+```
+
+3. Убедитесь, что сертификат HTTPS доверен Windows. Самоподписанный сертификат вызовет ошибку сети.
+4. Проверьте вход, выбор устройств, микрофон и радиоканалы.
+5. Раздавайте установщик вместе с инструкцией по `client-config.json`.
+
+Файл `client-config.json` не содержит секретов. Токен сессии хранится в изолированной сессии Electron и недоступен renderer.
+
+## 10. Обновление приложения
+
+Перед обновлением сделайте backup базы (раздел 12).
 
 ```bash
 cd /opt/moscowroleplay-voice
@@ -288,21 +424,21 @@ docker compose up -d --remove-orphans
 docker compose ps
 ```
 
-Миграции применяются отдельно:
+Миграции:
 
 ```bash
 docker compose exec server node server/src/database/migrate-cli.js
 ```
 
-Порядок для схемы с обратной совместимостью:
+Порядок:
 
-1. Сделать backup.
-2. Собрать новый образ.
-3. Применить миграции.
-4. Перезапустить сервер.
-5. Проверить `/health/live`, `/health/ready` и логи.
+1. Backup.
+2. Сборка нового образа.
+3. Применение миграций.
+4. Перезапуск сервера.
+5. Проверка `/health/live`, `/health/ready` и логов.
 
-Миграции в проекте forward-only: откат схемы автоматически не выполняется. Для отката используйте backup или отдельную миграцию.
+Миграции forward-only: автоматического отката нет. Для отката используйте backup или отдельную миграцию.
 
 Очистка старых образов:
 
@@ -310,18 +446,16 @@ docker compose exec server node server/src/database/migrate-cli.js
 docker image prune -f
 ```
 
-Не используйте `docker system prune -a --volumes` на рабочем сервере: это может удалить volume с базой.
+Не используйте `docker system prune -a --volumes` на рабочем сервере.
 
-## 9. Остановка и перезапуск
-
-Остановить без удаления контейнеров и данных:
+## 11. Остановка и перезапуск
 
 ```bash
 docker compose stop
 docker compose start
 ```
 
-Остановить и удалить контейнеры, сохранив volume:
+Удалить контейнеры, сохранив volume:
 
 ```bash
 docker compose down
@@ -333,22 +467,16 @@ docker compose down
 docker compose down -v
 ```
 
-Последняя команда необратима. Используйте её только при осознанном удалении базы.
+Последняя команда необратима.
 
-## 10. Резервное копирование PostgreSQL
+## 12. Резервное копирование PostgreSQL
 
-### 10.1. Ручной backup
-
-Создайте каталог:
+### 12.1. Ручной backup
 
 ```bash
 sudo mkdir -p /var/backups/moscowroleplay-voice
 sudo chown mrv:mrv /var/backups/moscowroleplay-voice
-```
 
-Создайте дамп в формате custom:
-
-```bash
 cd /opt/moscowroleplay-voice
 
 docker compose exec -T postgres sh -c \
@@ -356,72 +484,47 @@ docker compose exec -T postgres sh -c \
   > /var/backups/moscowroleplay-voice/mrv-$(date +%F-%H%M).dump
 ```
 
-Проверьте размер и целостность:
+Проверка:
 
 ```bash
 ls -lh /var/backups/moscowroleplay-voice/
-pg_restore --list /var/backups/moscowroleplay-voice/mrv-*.dump | head
-```
-
-`pg_restore` должен быть установлен на машине, где выполняется проверка. Если его нет, проверьте дамп внутри контейнера:
-
-```bash
 docker compose exec -T postgres pg_restore --list < /var/backups/moscowroleplay-voice/mrv-2026-01-01-0300.dump | head
 ```
 
-### 10.2. Восстановление
+### 12.2. Восстановление
 
-**Внимание:** восстановление с `--clean --if-exists` удаляет существующие объекты в целевой базе. Сначала проверьте дамп на тестовой базе.
-
-Остановите приложение:
+**Внимание:** `--clean --if-exists` удаляет существующие объекты в целевой базе. Сначала проверьте дамп на тестовой базе.
 
 ```bash
 docker compose stop server
-```
 
-Восстановите:
-
-```bash
 docker compose exec -T postgres sh -c \
   'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists' \
   < /var/backups/moscowroleplay-voice/mrv-2026-01-01-0300.dump
-```
 
-Запустите приложение и проверьте health:
-
-```bash
 docker compose start server
-curl -fsS http://127.0.0.1:3000/health/live
 curl -fsS http://127.0.0.1:3000/health/ready
 ```
 
-### 10.3. Ежедневный backup через cron
-
-Откройте crontab пользователя `mrv`:
+### 12.3. Ежедневный backup через cron
 
 ```bash
 crontab -e
 ```
 
-Пример запуска в 03:00:
-
 ```cron
 0 3 * * * cd /opt/moscowroleplay-voice && docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > /var/backups/moscowroleplay-voice/mrv-$(date +\%F-\%H\%M).dump
 ```
 
-Символы `%` в cron экранируются обратным слешем.
-
-Настройте ротацию старых дампов, например через `find`:
+Ротация:
 
 ```bash
 find /var/backups/moscowroleplay-voice -type f -name '*.dump' -mtime +14 -delete
 ```
 
-Не храните единственную копию backup на том же VPS. Периодически копируйте дампы на другую машину или в защищённое хранилище.
+Не храните единственную копию backup на том же VPS.
 
-## 11. Мониторинг ресурсов
-
-Для 1 vCPU и 2 GB RAM:
+## 13. Мониторинг ресурсов
 
 ```bash
 docker stats
@@ -432,15 +535,16 @@ uptime
 
 Следите за:
 
-- потреблением памяти PostgreSQL и Node.js;
+- памятью PostgreSQL и Node.js;
 - размером volume;
 - количеством соединений;
 - ошибками в логах;
-- health-статусом.
+- health-статусом;
+- `checks.game.lastErrorCode` и `checks.voice.mediasoup.ready`.
 
-После добавления mediasoup потребление памяти вырастет. На 1 vCPU используйте один Worker, пока измерения не покажут необходимость большего.
+mediasoup расходует память на каждого участника и транспорты. На 1 vCPU используйте один Worker, пока измерения не покажут необходимость большего.
 
-## 12. Диагностика
+## 14. Диагностика
 
 ### Приложение unhealthy
 
@@ -455,7 +559,7 @@ docker compose exec server node server/scripts/healthcheck.js
 
 - запущен ли PostgreSQL;
 - совпадают ли `POSTGRES_USER` и `POSTGRES_PASSWORD` с ролью в базе;
-- не изменился ли пароль после первого создания volume;
+- не изменился ли пароль после создания volume;
 - доступен ли порт внутри Docker-сети.
 
 ### PostgreSQL unhealthy
@@ -465,7 +569,47 @@ docker compose exec postgres pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
 docker compose logs --tail=200 postgres
 ```
 
-Если volume создан со старым паролем, изменение `.env` не обновит пароль автоматически. Смените пароль через `psql` или пересоздайте volume (с потерей данных).
+Если volume создан со старым паролем, изменение `.env` не обновит пароль автоматически.
+
+### Вход не работает
+
+Проверьте:
+
+- `DISCORD_REDIRECT_URI` совпадает с Developer Portal;
+- HTTPS настроен, сертификат доверенный;
+- `SESSION_COOKIE_SECURE=true`;
+- `TRUST_PROXY=true`, если используется прокси;
+- `DISCORD_*` заданы все три;
+- логи `module=auth-routes` и `module=auth`.
+
+### Голос не подключается
+
+Проверьте:
+
+- `MEDIASOUP_ANNOUNCED_IP` — публичный IP;
+- UDP-диапазон открыт в UFW и security group;
+- `checks.voice.mediasoup.ready === true`;
+- логи `module=mediasoup` и `module=signaling`;
+- клиент использует `wss://` и доверенный сертификат.
+
+### Proximity не работает
+
+Проверьте:
+
+- `PRC_SERVER_KEY` задан;
+- `checks.game.stale === false`;
+- пользователь привязан к Roblox;
+- пользователь находится на игровом сервере ER:LC;
+- логи `module=game` и `module=proximity`.
+
+### Радио недоступно
+
+Проверьте:
+
+- `RADIO_ENABLED=true`;
+- файл `config/radio-channels.json` существует в контейнере;
+- для закрытых каналов — `DISCORD_BOT_TOKEN`, Server Members Intent и роли;
+- логи `module=radio` и `module=discord-roles`.
 
 ### Порт занят
 
@@ -473,22 +617,11 @@ docker compose logs --tail=200 postgres
 sudo ss -ltnp | grep ':3000'
 ```
 
-Измените `SERVER_PORT` в `.env` и перезапустите Compose. Не забудьте обновить firewall и reverse proxy.
+Измените `SERVER_PORT` и обновите reverse proxy.
 
-### UDP не проходит
+## 15. Безопасность эксплуатации
 
-Проверьте:
-
-- диапазон в `.env`;
-- публикацию в `docker-compose.yml`;
-- firewall VPS и облака;
-- NAT провайдера;
-- правильность `MEDIASOUP_ANNOUNCED_IP`;
-- отсутствие конфликта портов.
-
-## 13. Безопасность эксплуатации
-
-- `.env` должен иметь права `600` и принадлежать пользователю эксплуатации.
+- `.env` — права `600`, владелец — пользователь эксплуатации.
 - Не публикуйте PostgreSQL.
 - Не используйте `host network` без доказанной необходимости.
 - Не запускайте контейнеры от root.
@@ -496,21 +629,30 @@ sudo ss -ltnp | grep ':3000'
 - Ограничьте SSH по IP и используйте ключи.
 - Не храните backup и `.env` в Git.
 - Не добавляйте Python и случайные зависимости.
-- Перед публичным запуском настройте TLS-прокси и не выставляйте `3000/tcp` всему интернету без необходимости.
+- Используйте HTTPS и не выставляйте `3000/tcp` всему интернету.
 - Проверьте, что логи не содержат секретов.
+- Храните ключи Discord, Bloxlink и PRC только в `.env` и менеджере секретов.
 
-## 14. Чек-лист первого запуска
+## 16. Чек-лист первого запуска
 
 - [ ] Docker и Compose установлены.
 - [ ] `.env` создан, пароли заменены, права `600`.
-- [ ] `POSTGRES_PASSWORD` не является заглушкой и не совпадает с `POSTGRES_USER` или `POSTGRES_DB`.
-- [ ] `MEDIASOUP_ANNOUNCED_IP` заполнен публичным IP перед развёртыванием голосового модуля; на этапе фундамента допускается пустое значение.
-- [ ] Firewall разрешает SSH, TCP-порт приложения и UDP-диапазон.
+- [ ] `POSTGRES_PASSWORD` не является заглушкой.
+- [ ] `MEDIASOUP_ANNOUNCED_IP` содержит публичный IPv4.
+- [ ] `SESSION_COOKIE_SECURE=true`, HTTPS настроен.
+- [ ] `DISCORD_*` заполнены, redirect URI совпадает.
+- [ ] `DISCORD_BOT_TOKEN` и Server Members Intent настроены, если нужны закрытые каналы.
+- [ ] `BLOXLINK_API_KEY` и `DISCORD_GUILD_ID` заполнены, если нужна привязка Roblox.
+- [ ] `PRC_SERVER_KEY` заполнен.
+- [ ] `config/radio-channels.json` содержит корректные каналы и роли.
+- [ ] Firewall разрешает SSH, 80/443/tcp и UDP-диапазон.
 - [ ] PostgreSQL не опубликован наружу.
 - [ ] `docker compose build` завершился успешно.
 - [ ] `docker compose up -d` поднял оба сервиса.
 - [ ] `docker compose ps` показывает `healthy`.
 - [ ] Миграции применены.
-- [ ] `GET /health/live` возвращает `200`, а `GET /health/ready` и `GET /health` — `200` и `status: "ok"`.
+- [ ] `/health/live` и `/health/ready` отвечают `200`.
+- [ ] Вход через Discord проверен в браузере и в клиенте.
+- [ ] Голос проверен двумя клиентами.
 - [ ] Backup настроен и проверен.
 - [ ] Логи не содержат секретов.

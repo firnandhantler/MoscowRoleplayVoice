@@ -18,7 +18,8 @@
 Дополнительно:
 
 - редактор с поддержкой EditorConfig (`.editorconfig` уже в проекте);
-- терминал с кодировкой UTF-8 для корректного отображения русских логов.
+- терминал с кодировкой UTF-8;
+- микрофон и наушники для проверки голоса.
 
 ### 1.1. Проблема с `npm.ps1`
 
@@ -33,20 +34,16 @@ npm.ps1 cannot be loaded because running scripts is disabled on this system
 ```powershell
 npm.cmd --version
 npm.cmd install
-npm.cmd run check
+npm.cmd run verify
 ```
 
-Во всех командах документации `npm` можно заменить на `npm.cmd`, если у вас возникает эта ошибка.
-
 ### 1.2. Кодировка консоли
-
-Если русский текст в логах отображается как набор символов, переключите кодировку:
 
 ```powershell
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 ```
 
-Перенаправленные файлы логов читайте явно:
+Перенаправленные логи читайте явно:
 
 ```powershell
 Get-Content .\server.out.log -Encoding UTF8
@@ -61,8 +58,6 @@ Set-Location 'C:\Users\maksi\OneDrive\Рабочий стол\MoscowRoleplay Voi
 ```
 
 ### 2.2. Проверить состояние Git
-
-Перед любыми изменениями:
 
 ```powershell
 git status
@@ -96,9 +91,16 @@ function New-StrongPassword {
 "POSTGRES_PASSWORD: $(New-StrongPassword)"
 ```
 
-Файл `.env` исключён из Git. Никогда не выводите его содержимое в чат, логи и отчёты. В отчётах допустимо указывать только имена переменных.
+Файл `.env` исключён из Git. Никогда не выводите его содержимое в чат, логи и отчёты.
 
-В `production` сервер откажется запускаться, если `POSTGRES_PASSWORD` содержит заглушку вида `change_me_*` или совпадает с `POSTGRES_USER` либо `POSTGRES_DB`. В `development` и `test` заглушки допустимы, но для реальной работы используйте сильные уникальные пароли.
+Для локальной разработки без интеграций можно оставить пустыми:
+
+- `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI`;
+- `DISCORD_BOT_TOKEN`;
+- `BLOXLINK_API_KEY`;
+- `PRC_SERVER_KEY`.
+
+Сервер запустится, health-check будет работать, но вход, привязка Roblox, proximity и закрытые радиоканалы будут отключены с предупреждениями в логах.
 
 ### 2.4. Установить зависимости
 
@@ -112,7 +114,7 @@ npm.cmd install
 Set-Location ..
 ```
 
-`npm ci` использует lock-файлы и подходит для воспроизводимой установки:
+Воспроизводимая установка по lock-файлам:
 
 ```powershell
 Set-Location .\server
@@ -131,23 +133,19 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d postgres
 
 **Вариант B. Локальный PostgreSQL 17:**
 
-Создайте роль и базу под суперпользователем:
-
 ```sql
 CREATE ROLE mrv_app LOGIN PASSWORD 'сильный_пароль';
 CREATE DATABASE moscowroleplay_voice OWNER mrv_app;
 ```
 
-Укажите в `.env` фактические `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER` и `POSTGRES_PASSWORD`.
+Укажите в `.env` фактические параметры подключения.
 
 **Вариант C. Переносимый PostgreSQL без установки в систему:**
 
-Этот способ использовался при проверке фундамента. Он не требует прав администратора и не изменяет систему:
-
-1. Скачайте официальные Windows-бинарники PostgreSQL 17 с сайта EnterpriseDB.
+1. Скачайте официальные Windows-бинарники PostgreSQL 17.
 2. Распакуйте архив во временный каталог.
 3. Выполните `initdb` с паролем суперпользователя.
-4. Запустите `pg_ctl start` с отдельным портом, например `55432`.
+4. Запустите `pg_ctl start` на отдельном порту, например `55432`.
 5. Создайте базу и роль приложения.
 6. Укажите этот порт в `.env`.
 
@@ -160,16 +158,10 @@ Set-Location .\server
 npm.cmd run migrate
 ```
 
-Ожидаемый результат при первом запуске:
+При первом запуске применяются две миграции. При повторном:
 
 ```json
-{"appliedCount":1,"total":1,"msg":"Применение миграций завершено"}
-```
-
-При повторном запуске:
-
-```json
-{"appliedCount":0,"total":1,"msg":"Применение миграций завершено"}
+{"appliedCount":0,"total":2,"msg":"Применение миграций завершено"}
 ```
 
 Это подтверждает идемпотентность механизма миграций.
@@ -178,21 +170,18 @@ npm.cmd run migrate
 
 ### 3.1. Сервер
 
-Режим разработки с автоматическим перезапуском:
-
 ```powershell
 Set-Location .\server
 npm.cmd run dev
 ```
 
-Обычный запуск:
+Без режима наблюдения:
 
 ```powershell
-Set-Location .\server
 npm.cmd start
 ```
 
-Сервер читает `.env` из корня проекта. Переменные, уже заданные в окружении, имеют приоритет над файлом.
+Сервер читает `.env` из корня проекта. Переменные окружения имеют приоритет над файлом.
 
 ### 3.2. Electron-клиент
 
@@ -201,7 +190,18 @@ Set-Location .\client
 npm.cmd start
 ```
 
-Клиент на текущем этапе — безопасный каркас. Он не подключается к серверу, не запрашивает микрофон и не передаёт голос.
+`start` собирает renderer через esbuild и запускает Electron. Для подключения к локальному серверу дополнительная конфигурация не нужна: по умолчанию используется `http://localhost:3000`.
+
+Для другого адреса создайте `client/client-config.json`:
+
+```json
+{
+  "serverUrl": "https://voice.example.com",
+  "wsPath": "/ws"
+}
+```
+
+Или задайте `MVR_SERVER_URL` и `MVR_WS_PATH` в окружении.
 
 ### 3.3. Одновременный запуск
 
@@ -214,23 +214,16 @@ npm.cmd start
 
 ## 4. Команды проверки
 
-### 4.1. Синтаксис
+### 4.1. Синтаксис сервера
 
 ```powershell
 Set-Location .\server
 npm.cmd run check
 ```
 
-Скрипт `server/scripts/check-syntax.js` рекурсивно проверяет `server/src`, `server/test`, `server/scripts` и `shared`.
+Скрипт `server/scripts/check-syntax.js` рекурсивно проверяет `server/src`, `server/test`, `server/scripts` и `shared` (46 файлов на этапе 5/5).
 
-Клиент:
-
-```powershell
-Set-Location .\client
-npm.cmd run check
-```
-
-### 4.2. Тесты
+### 4.2. Тесты сервера
 
 ```powershell
 Set-Location .\server
@@ -239,10 +232,14 @@ npm.cmd test
 
 Проверяются:
 
-- валидация конфигурации, включая production-запрет паролей-заглушек;
-- протокол WebSocket;
-- liveness- и readiness-проверки, а также HTTP-маршруты `/health`, `/health/live`, `/health/ready`;
-- менеджер корректной остановки.
+- валидация конфигурации, включая production-запрет заглушек;
+- протокол WebSocket и все типы сообщений;
+- liveness/readiness и HTTP-маршруты;
+- менеджер корректной остановки;
+- Proximity Engine: grid, гистерезис, stale-снимок, diff Consumers;
+- Radio Engine: открытые и закрытые каналы, занятость, выход, transport reset.
+
+На этапе 5/5: **58 из 58 тестов**.
 
 ### 4.3. Полная проверка сервера
 
@@ -253,37 +250,56 @@ npm.cmd run verify
 
 Команда последовательно запускает `check` и `test`.
 
-### 4.4. Health-check
-
-Readiness с проверкой PostgreSQL:
+### 4.4. Проверка клиента
 
 ```powershell
-curl.exe -i http://127.0.0.1:3000/health/ready
+Set-Location .\client
+npm.cmd run check
+npm.cmd run build
 ```
 
-Liveness без проверки PostgreSQL:
+`check` проверяет синтаксис 23 файлов (main, preload, renderer, scripts). `build` собирает иконку и `renderer/dist/app.js`.
+
+### 4.5. Сборка установщика
+
+```powershell
+Set-Location .\client
+npm.cmd run dist
+```
+
+Результат: `client\release\MoscowRoleplay-Voice-Setup-0.5.0.exe`.
+
+Для быстрой проверки без установщика:
+
+```powershell
+npm.cmd run pack
+```
+
+### 4.6. Health-check
 
 ```powershell
 curl.exe -i http://127.0.0.1:3000/health/live
-```
-
-Совместимость с Docker healthcheck:
-
-```powershell
+curl.exe -i http://127.0.0.1:3000/health/ready
 curl.exe -i http://127.0.0.1:3000/health
 ```
 
-Readiness и `/health` возвращают `HTTP 200` и `status: "ok"` при доступной базе. Если PostgreSQL недоступен — `HTTP 503` и `status: "degraded"`. Liveness продолжает возвращать `HTTP 200`, пока процесс HTTP-сервера жив.
+Readiness и `/health` возвращают `200` и `status: "ok"` при доступной базе. Если PostgreSQL недоступен — `503` и `status: "degraded"`. Liveness продолжает возвращать `200`, пока процесс жив.
 
-### 4.5. Проверка WebSocket
+В readiness есть информационные блоки:
 
-Из каталога `server`:
+- `checks.game` — состояние PRC и poller;
+- `checks.voice` — mediasoup и signaling.
+
+Они не влияют на готовность сервера.
+
+### 4.7. Проверка WebSocket
 
 ```powershell
+Set-Location .\server
 node --input-type=module -e "import WebSocket from 'ws'; const ws = new WebSocket('ws://127.0.0.1:3000/ws'); ws.on('message', (data) => { console.log(data.toString()); ws.close(); });"
 ```
 
-Ожидается сообщение `server.hello`.
+Ожидается `server.hello`.
 
 Проверка ping/pong:
 
@@ -293,7 +309,7 @@ node --input-type=module -e "import WebSocket from 'ws'; const ws = new WebSocke
 
 Ожидается `server.hello` и `server.pong` с тем же `id`.
 
-### 4.6. Проверка Docker Compose
+### 4.8. Проверка Docker Compose
 
 При установленном Docker:
 
@@ -304,47 +320,89 @@ docker compose up -d
 docker compose ps
 ```
 
-В среде, где создавался фундамент, Docker отсутствовал. Конфигурация Compose проверялась статически: YAML-парсер, наличие сервисов, healthcheck, volume, ограничений логов, TCP/UDP-портов и всех переменных из `.env.example`. Реальная сборка образа не выполнялась.
+В среде, где создавался проект, Docker отсутствовал. Конфигурация Compose проверялась статически: YAML, сервисы, healthcheck, volume, ограничения логов, TCP/UDP-порты и переменные из `.env.example`. Реальная сборка образа не выполнялась.
 
-### 4.7. Проверка mediasoup
+### 4.9. Проверка mediasoup
 
 ```powershell
 Set-Location .\server
 node --input-type=module -e "import { createWorker } from 'mediasoup'; const worker = await createWorker({ logLevel: 'warn' }); console.log('worker pid:', worker.pid); await worker.close();"
 ```
 
-На Windows Worker запускался успешно. Пакет `mediasoup` при установке скачивает заранее собранный Worker для поддерживаемой платформы; если готового бинарника нет, может потребоваться локальная сборка C++. Python в проект не добавляется. Для Linux-совместимой проверки используйте Docker или WSL2. На текущем этапе Worker, Router и Transport не создаются, а `MEDIASOUP_ANNOUNCED_IP` можно оставить пустым.
+На Windows Worker запускался успешно. Пакет `mediasoup` при установке скачивает заранее собранный Worker для поддерживаемой платформы; если готового бинарника нет, может потребоваться локальная сборка C++. Python в проект не добавляется.
 
-## 5. Структура и правила кода
+Полноценная проверка голоса требует двух клиентов, микрофонов и открытого UDP-диапазона.
+
+## 5. Локальная проверка интеграций
+
+### 5.1. Discord OAuth2
+
+1. Создайте тестовое приложение Discord.
+2. Добавьте redirect URI `http://localhost:3000/auth/discord/callback`.
+3. Заполните `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI`.
+4. Установите `SESSION_COOKIE_SECURE=false` (допустимо в development).
+5. Запустите сервер и клиент, нажмите «Войти через Discord».
+
+Если вход не завершается, проверьте:
+
+- точное совпадение redirect URI;
+- что сервер доступен по `http://localhost:3000`;
+- логи `module=auth-routes` и `module=auth`;
+- что порт не занят другим процессом.
+
+### 5.2. Bloxlink
+
+Без реального ключа Bloxlink привязка недоступна. Не имитируйте её: сервер должен явно возвращать `bloxlink_disabled`. Для проверки используйте тестовый Discord-сервер с установленным Bloxlink и ключом Server API.
+
+### 5.3. PRC
+
+Без `PRC_SERVER_KEY` poller отключается. Не подменяйте его фиктивными координатами в рабочем коде. Для unit-тестов используйте mock `fetchImpl`, как это сделано в существующих тестах.
+
+### 5.4. Голос
+
+Минимальная проверка:
+
+1. Запустите сервер с `MEDIASOUP_ANNOUNCED_IP`, равным локальному IP компьютера.
+2. Запустите два клиента на разных ПК или в разных профилях.
+3. Войдите двумя разными Discord-аккаунтами.
+4. Убедитесь, что оба находятся на тестовом сервере ER:LC и привязаны к Roblox.
+5. Проверьте proximity, радио, PTT и переподключение.
+
+Один клиент не заменяет проверку двух участников.
+
+## 6. Структура и правила кода
 
 - Сервер: ES Modules, `import`/`export`, без `require`.
-- Клиент: CommonJS для `main.js` и `preload.js`.
+- Клиент: CommonJS для `main.js`, `preload.js` и модулей главного процесса.
+- Renderer: ES Modules, сборка esbuild в IIFE.
 - Отступы: 2 пробела.
 - Точки с запятой обязательны.
 - Строки: одинарные кавычки, кроме JSON и HTML.
-- Комментарии и сообщения для пользователя — на русском языке.
+- Комментарии и сообщения для пользователя — на русском.
 - Идентификаторы, имена пакетов и API — на английском.
-- Коды ошибок — в стиле `snake_case`.
+- Коды ошибок — `snake_case`.
 - Логи — структурированные JSON через `pino`.
 
 Не размещайте бизнес-логику в `server/src/index.js`. Точка входа только собирает компоненты.
 
 Не создавайте фиктивные реализации mediasoup, Discord, Bloxlink или PRC API. Если функция не реализована, она должна отсутствовать и быть задокументирована.
 
-## 6. Правила Git
+Общий протокол хранится только в `shared/protocol.js`. Не дублируйте формат сообщений в клиенте и сервере.
+
+## 7. Правила Git
 
 1. Перед изменениями выполните `git status`.
 2. Не трогайте чужие незакоммиченные изменения.
 3. Делайте осмысленные коммиты в формате Conventional Commits:
 
 ```text
-feat: создать фундамент сервера
+feat: завершить интеграцию сервера и клиента
 fix: исправить проверку конфигурации
-docs: описать локальный запуск
+docs: описать запуск на Ubuntu
 ```
 
 4. Не коммитьте `.env`, секреты, `node_modules`, логи, дампы базы и временные файлы.
-5. Не используйте `git reset --hard`, `git push --force` и rebase опубликованной истории без прямого согласия владельца.
+5. Не используйте `git reset --hard`, `git push --force` и rebase опубликованной истории без прямого согласия.
 6. Не переписывайте историю Git.
 7. Перед коммитом проверьте, что попадёт в индекс:
 
@@ -360,21 +418,20 @@ git diff --cached --stat
 git check-ignore -v .env
 ```
 
-Ожидается строка с правилом из `.gitignore`.
+### 7.1. Проверка на секреты
 
-### 6.1. Проверка на секреты
+Перед коммитом убедитесь, что в индекс не попали:
 
-Перед коммитом просмотрите имена файлов и убедитесь, что в индекс не попали:
-
-- `.env` и его локальные варианты;
+- `.env` и локальные варианты;
 - `*.pem`, `*.key`, `*.p12`, `*.pfx`;
 - `secrets/`, `credentials/`;
 - дампы и архивы базы;
-- файлы логов и PID-файлы.
+- логи и PID-файлы;
+- `client/release/` и `client/renderer/dist/`.
 
 Не выводите значения переменных окружения в терминал и отчёты.
 
-## 7. Совместная работа OpenCode и Kilo CLI
+## 8. Совместная работа OpenCode и Kilo CLI
 
 Оба инструмента обязаны прочитать `AGENTS.md` перед изменениями.
 
@@ -384,11 +441,12 @@ git check-ignore -v .env
 2. Проверить `git status`.
 3. Изучить существующие файлы, не перезаписывать их без проверки.
 4. Внести изменения.
-5. Запустить `npm.cmd run verify` в `server` и `npm.cmd run check` в `client`.
-6. Обновить документацию при изменении поведения.
-7. Показать список изменённых файлов.
-8. Подготовить отдельный коммит.
-9. Не переходить к следующему этапу без команды владельца.
+5. Запустить `npm.cmd run verify` в `server`, `npm.cmd run check` в `client`.
+6. При изменении клиентской сборки выполнить `npm.cmd run build`.
+7. Обновить документацию при изменении поведения.
+8. Показать список изменённых файлов.
+9. Подготовить отдельный коммит.
+10. Не переходить к следующему этапу без команды владельца.
 
 Правила для агентов:
 
@@ -398,60 +456,62 @@ git check-ignore -v .env
 - честно сообщать о недоступных инструментах;
 - оставлять проект в запускаемом состоянии.
 
-## 8. Отладка типовых проблем
+## 9. Отладка типовых проблем
 
 | Симптом | Причина | Решение |
 |---|---|---|
 | `npm.ps1 cannot be loaded` | Политика PowerShell | Используйте `npm.cmd` |
 | `ECONNREFUSED 127.0.0.1:5432` | PostgreSQL не запущен | Запустите базу или проверьте `POSTGRES_PORT` |
-| `password authentication failed` | Неверный пароль или старый том | Проверьте `.env`; при необходимости смените пароль роли |
+| `password authentication failed` | Неверный пароль или старый том | Проверьте `.env`; смените пароль роли |
 | `EADDRINUSE` | Порт занят | Измените `SERVER_PORT` или остановите лишний процесс |
-| `503 degraded` | База недоступна | Смотрите логи `module=database`; liveness проверьте через `/health/live` |
-| Ошибка `POSTGRES_PASSWORD` при запуске | В production используется заглушка или пароль совпадает с ролью/базой | Задайте уникальный пароль |
+| `503 degraded` | База недоступна | Логи `module=database`; liveness через `/health/live` |
+| Ошибка `POSTGRES_PASSWORD` | Заглушка или совпадение с ролью/базой | Задайте уникальный пароль |
+| `auth_disabled` | Не заданы `DISCORD_*` | Задайте все три переменные |
+| `bloxlink_disabled` | Нет ключа Bloxlink | Ключ и `DISCORD_GUILD_ID` |
+| `voice_unavailable` | mediasoup не запустился | Логи `module=mediasoup` |
 | `Cannot find package 'pino-pretty'` | Нет devDependencies | `npm.cmd install` или `LOG_PRETTY=false` |
 | `ERR_MODULE_NOT_FOUND` для `shared/protocol.js` | Повреждена структура `shared` | Проверьте `shared/package.json` и `type: module` |
-| Русский текст в логах искажён | Кодировка консоли | `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8` |
-| `docker: command not found` | Docker не установлен | Установите Docker Desktop с Linux-контейнерами |
-| Ошибка сборки mediasoup | Нет prebuilt-бинарника | Используйте Linux-контейнер; Python в проект не добавляется |
+| Русский текст искажён | Кодировка консоли | `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8` |
+| `docker: command not found` | Docker не установлен | Установите Docker Desktop |
+| Ошибка сборки mediasoup | Нет prebuilt-бинарника | Linux-контейнер или поддерживаемая платформа |
 
-### 8.1. Проверка занятого порта
+### 9.1. Проверка занятого порта
 
 ```powershell
 Get-NetTCPConnection -LocalPort 3000 -ErrorAction SilentlyContinue |
   Select-Object State, LocalAddress, LocalPort, OwningProcess
 ```
 
-### 8.2. Остановка зависшего Node.js-процесса
+### 9.2. Остановка зависшего Node.js-процесса
 
 ```powershell
 Get-Process node -ErrorAction SilentlyContinue |
   Select-Object Id, ProcessName, StartTime
 ```
 
-Останавливайте только свой процесс, убедившись в его идентификаторе:
+Останавливайте только свой процесс:
 
 ```powershell
 Stop-Process -Id <PID>
 ```
 
-Не завершайте процессы других приложений.
+## 10. Ограничения локальной среды
 
-## 9. Ограничения локальной среды
-
-- Docker Desktop может отсутствовать; тогда Docker Compose проверяется только статически.
-- WSL2 может отсутствовать; тогда Linux-совместимость mediasoup не проверяется локально.
+- Docker Desktop может отсутствовать; тогда Compose проверяется только статически.
+- WSL2 может отсутствовать; Linux-совместимость mediasoup локально не проверяется.
 - Windows не доставляет POSIX-сигналы `SIGINT`/`SIGTERM` так же, как Linux. Graceful shutdown проверен unit-тестами; окончательная проверка нужна в Linux/Docker.
-- Переносимый PostgreSQL удобен для проверки, но не является рекомендуемым способом эксплуатации.
-- Нативная сборка mediasoup на Windows не гарантируется для всех версий Node.js и конфигураций.
+- Реальная доставка UDP и работа mediasoup за NAT требуют VPS.
+- Discord, Bloxlink и PRC нельзя полноценно проверить без реальных ключей.
 - Локальный запуск не заменяет проверку на Ubuntu Server 24.04.
 
-## 10. Чек-лист перед коммитом
+## 11. Чек-лист перед коммитом
 
 - [ ] `git status` просмотрен.
 - [ ] `.env` и секреты не в индексе.
-- [ ] `node_modules`, логи и временные файлы не в индексе.
+- [ ] `node_modules`, логи, `client/release`, `client/renderer/dist` не в индексе.
 - [ ] `npm.cmd run verify` в `server` пройден.
 - [ ] `npm.cmd run check` в `client` пройден.
+- [ ] `npm.cmd run build` в `client` пройден, если менялся renderer.
 - [ ] Документация обновлена на русском языке.
 - [ ] Новые зависимости обоснованы и проверены в npm registry.
 - [ ] Границы текущего этапа не нарушены.

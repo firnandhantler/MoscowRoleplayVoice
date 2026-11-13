@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>MoscowRoleplay Voice</title>
@@ -17,61 +17,198 @@
           <div class="brand-mark" aria-hidden="true">MR</div>
           <div>
             <p class="brand-title">MoscowRoleplay Voice</p>
-            <p class="brand-subtitle">Голосовая система для Roblox ER:LC</p>
+            <p class="brand-subtitle">Голосовая связь Roblox ER:LC</p>
           </div>
         </div>
-        <span class="status-badge">Этап 1 · фундамент</span>
+
+        <div class="topbar-right">
+          <span id="connection-pill" class="pill pill--muted">Не подключено</span>
+          <div id="user-chip" class="user-chip hidden">
+            <span id="user-name" class="user-name">—</span>
+            <span id="user-roblox" class="user-roblox">Roblox не привязан</span>
+          </div>
+          <button id="btn-logout" class="btn btn--ghost hidden" type="button">Выйти</button>
+        </div>
       </header>
 
       <main class="content">
-        <section class="hero">
-          <p class="eyebrow">Безопасный каркас клиента</p>
-          <h1>Клиент готов к следующему этапу</h1>
-          <p class="hero-text">
-            Сейчас здесь нет передачи голоса, авторизации и радиоканалов.
-            Это намеренно: на первом этапе создаётся только безопасная основа,
-            на которую будут опираться голосовые модули.
-          </p>
+        <section id="view-login" class="view">
+          <div class="login-card">
+            <p class="eyebrow">Авторизация</p>
+            <h1>Подключение к голосу MoscowRoleplay</h1>
+            <p class="muted">
+              Вход выполняется через Discord. Сервер проверит вашу учётную запись,
+              найдёт привязку Roblox через Bloxlink и подключит клиент к голосовой
+              системе игрового сервера ER:LC.
+            </p>
+
+            <button id="btn-login" class="btn btn--primary btn--large" type="button">
+              Войти через Discord
+            </button>
+
+            <p id="login-error" class="form-error hidden" role="alert"></p>
+
+            <ol class="steps">
+              <li>Вход в Discord в отдельном окне.</li>
+              <li>Проверка привязки Roblox на сервере.</li>
+              <li>Подключение к каналу голоса по близости.</li>
+            </ol>
+
+            <p class="hint">
+              Клиент не хранит пароли и не получает токены Discord.
+              Вход можно закрыть, если он не нужен.
+            </p>
+          </div>
         </section>
 
-        <section class="grid">
-          <article class="card">
-            <h2>Что уже заложено</h2>
-            <ul>
-              <li><code>contextIsolation: true</code></li>
-              <li><code>nodeIntegration: false</code></li>
-              <li>Изолированный <code>preload.js</code> с минимальным API</li>
-              <li>Запрет внешних переходов и новых окон</li>
-              <li>Запрет разрешений браузера по умолчанию</li>
-              <li>CSP без внешних источников</li>
-            </ul>
-          </article>
+        <section id="view-app" class="view hidden">
+          <div class="layout">
+            <div class="column">
+              <article class="card">
+                <header class="card-head">
+                  <h2>Голос по близости</h2>
+                  <span id="proximity-badge" class="badge badge--muted">Нет данных</span>
+                </header>
 
-          <article class="card">
-            <h2>Что появится позже</h2>
-            <ul>
-              <li>Авторизация через Discord</li>
-              <li>Связка Discord и Roblox</li>
-              <li>Proximity Voice</li>
-              <li>Радиоканалы и PTT</li>
-              <li>mediasoup-client и Web Audio API</li>
-            </ul>
-          </article>
-        </section>
+                <p id="proximity-text" class="muted">
+                  Ожидание данных игрового сервера.
+                </p>
 
-        <section class="notice" aria-live="polite">
-          <strong>Важно:</strong> клиент не подключён к серверу и не запрашивает
-          доступ к микрофону. Это будет реализовано на следующих этапах после
-          серверной авторизации и проверки прав.
+                <div class="stats">
+                  <div class="stat">
+                    <span id="nearby-count" class="stat-value">0</span>
+                    <span class="stat-label">игроков слышно</span>
+                  </div>
+                  <div class="stat">
+                    <span id="distance-value" class="stat-value">—</span>
+                    <span class="stat-label">радиус слышимости</span>
+                  </div>
+                </div>
+
+                <dl id="player-info" class="kv"></dl>
+              </article>
+
+              <article class="card">
+                <header class="card-head">
+                  <h2>Радиосвязь</h2>
+                  <span id="radio-badge" class="badge badge--muted">Не в канале</span>
+                </header>
+
+                <p id="radio-hint" class="muted">Выберите радиоканал, чтобы принимать и передавать.</p>
+
+                <ul id="channel-list" class="channel-list"></ul>
+
+                <div id="radio-transmission" class="tx hidden">
+                  <span class="tx-dot" aria-hidden="true"></span>
+                  <span id="tx-text">Передача</span>
+                </div>
+              </article>
+            </div>
+
+            <div class="column">
+              <article class="card">
+                <header class="card-head">
+                  <h2>Микрофон</h2>
+                  <span id="mic-badge" class="badge badge--ok">Активен</span>
+                </header>
+
+                <div class="meter" aria-hidden="true">
+                  <div id="mic-meter" class="meter-fill"></div>
+                </div>
+
+                <button id="btn-mute" class="btn btn--wide btn--danger" type="button">
+                  Выключить микрофон
+                </button>
+
+                <label class="field">
+                  <span>Устройство ввода</span>
+                  <select id="select-input"></select>
+                </label>
+
+                <label class="field">
+                  <span>Режим микрофона</span>
+                  <select id="select-mic-mode">
+                    <option value="open">Открытый микрофон</option>
+                    <option value="pushToTalk">Push-to-Talk</option>
+                  </select>
+                </label>
+
+                <p id="ptt-hint" class="hint hidden"></p>
+              </article>
+
+              <article class="card">
+                <header class="card-head">
+                  <h2>Настройки</h2>
+                  <button id="btn-reset" class="btn btn--ghost btn--small" type="button">Сбросить</button>
+                </header>
+
+                <label class="field">
+                  <span>Устройство вывода</span>
+                  <select id="select-output"></select>
+                </label>
+
+                <label class="field">
+                  <span>Громкость входящего голоса <output id="out-volume-value">100%</output></span>
+                  <input id="range-volume" type="range" min="0" max="100" step="1" />
+                </label>
+
+                <label class="field">
+                  <span>Усиление микрофона <output id="out-gain-value">100%</output></span>
+                  <input id="range-gain" type="range" min="0" max="200" step="5" />
+                </label>
+
+                <div class="checks">
+                  <label><input id="chk-echo" type="checkbox" /> Эхоподавление</label>
+                  <label><input id="chk-noise" type="checkbox" /> Шумоподавление</label>
+                  <label><input id="chk-agc" type="checkbox" /> Автогромкость</label>
+                  <label><input id="chk-duck" type="checkbox" /> Приглушать окружение при радио</label>
+                </div>
+
+                <div class="keys">
+                  <div class="key-row">
+                    <span>Радио</span>
+                    <button id="btn-key-radio" class="key-btn" type="button">R</button>
+                    <label class="check-inline"><input id="chk-radio-global" type="checkbox" /> глобально</label>
+                  </div>
+                  <div class="key-row">
+                    <span>Proximity</span>
+                    <button id="btn-key-proximity" class="key-btn" type="button">V</button>
+                  </div>
+                </div>
+
+                <p class="hint">
+                  Глобальная клавиша работает как переключатель передачи. Удержание
+                  клавиши доступно, когда окно клиента активно.
+                </p>
+              </article>
+
+              <article class="card card--compact">
+                <header class="card-head">
+                  <h2>Соединение</h2>
+                  <button id="btn-reconnect" class="btn btn--ghost btn--small" type="button">Переподключить</button>
+                </header>
+
+                <dl class="kv">
+                  <dt>Сервер</dt>
+                  <dd id="server-url">—</dd>
+                  <dt>Состояние</dt>
+                  <dd id="signal-state">—</dd>
+                  <dt>Версия</dt>
+                  <dd id="app-version">—</dd>
+                </dl>
+
+                <button id="btn-relink" class="btn btn--ghost btn--small" type="button">
+                  Проверить привязку Roblox
+                </button>
+              </article>
+            </div>
+          </div>
         </section>
       </main>
 
-      <footer class="footer">
-        <span id="app-info">Загрузка сведений о приложении…</span>
-        <span>Только локальный renderer · без Node.js API</span>
-      </footer>
+      <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
     </div>
 
-    <script src="renderer.js"></script>
+    <script src="dist/app.js"></script>
   </body>
 </html>

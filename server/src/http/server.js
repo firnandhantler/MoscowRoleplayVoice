@@ -1,51 +1,41 @@
 import { randomUUID } from 'node:crypto';
 import http from 'node:http';
 import { createHealthService } from '../monitoring/health.js';
-
-const COMMON_HEADERS = Object.freeze({
-  'X-Content-Type-Options': 'nosniff',
-  'X-Frame-Options': 'DENY',
-  'Referrer-Policy': 'no-referrer',
-  'Cache-Control': 'no-store',
-  'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
-});
+import { sendJson } from './respond.js';
 
 const HEALTH_PATHS = new Set(['/health', '/health/live', '/health/ready']);
 
 /**
- * Отправляет JSON-ответ с безопасными заголовками.
- *
- * @param {import('node:http').ServerResponse} res
- * @param {number} statusCode
- * @param {object} payload
- * @param {Record<string, string>} extraHeaders
- */
-function sendJson(res, statusCode, payload, extraHeaders = {}) {
-  const body = JSON.stringify(payload);
-
-  for (const [name, value] of Object.entries(COMMON_HEADERS)) {
-    res.setHeader(name, value);
-  }
-
-  for (const [name, value] of Object.entries(extraHeaders)) {
-    res.setHeader(name, value);
-  }
-
-  res.statusCode = statusCode;
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.setHeader('Content-Length', Buffer.byteLength(body, 'utf8'));
-  res.end(body);
-}
-
-/**
  * Создаёт HTTP-сервер приложения.
  *
- * @param {{config: Readonly<object>, logger: import('pino').Logger, database: import('../database/pool.js').Database}} options
+ * @param {{
+ *   config: Readonly<object>,
+ *   logger: import('pino').Logger,
+ *   database: import('../database/pool.js').Database,
+ *   authRouter?: {handle: (ctx: object) => Promise<boolean>}|null,
+ *   gameState?: import('../game/state.js').GameState|null,
+ *   poller?: import('../game/poller.js').GamePoller|null,
+ *   voice?: {mediasoup: object, signaling: object|null}|null,
+ * }} options
  * @returns {import('node:http').Server}
  */
-export function createHttpServer({ config, logger, database }) {
+export function createHttpServer({
+  config,
+  logger,
+  database,
+  authRouter = null,
+  gameState = null,
+  poller = null,
+  voice = null,
+}) {
   const log = logger.child({ module: 'http' });
-  const healthService = createHealthService({ config, database });
+  const healthService = createHealthService({
+    config,
+    database,
+    gameState,
+    poller,
+    voice,
+  });
 
   const server = http.createServer((req, res) => {
     const requestId = randomUUID();
@@ -148,7 +138,14 @@ export function createHttpServer({ config, logger, database }) {
             healthLiveness: '/health/live',
             healthReadiness: '/health/ready',
             websocket: config.websocket.path,
+            auth: config.auth?.enabled === true ? '/auth/discord/start' : null,
+            game: gameState === null ? null : '/health/ready',
           });
+          return;
+        }
+
+        // Маршруты авторизации подключаются, только если модуль auth собран.
+        if (authRouter !== null && (await authRouter.handle({ req, res, url, method }))) {
           return;
         }
 

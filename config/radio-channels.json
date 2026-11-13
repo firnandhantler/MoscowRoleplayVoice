@@ -1,0 +1,32 @@
+{
+  "channels": [
+    {
+      "id": "dispatch",
+      "name": "Диспетчерская",
+      "description": "Общий канал диспетчерской службы",
+      "roleIds": [],
+      "priority": 1
+    },
+    {
+      "id": "police",
+      "name": "Полиция",
+      "description": "Канал сотрудников полиции",
+      "roleIds": [],
+      "priority": 2
+    },
+    {
+      "id": "sheriff",
+      "name": "Шериф",
+      "description": "Канал офиса шерифа",
+      "roleIds": [],
+      "priority": 3
+    },
+    {
+      "id": "fire-ems",
+      "name": "Пожарная служба и EMS",
+      "description": "Канал пожарной службы и скорой помощи",
+      "roleIds": [],
+      "priority": 4
+    }
+  ]
+}

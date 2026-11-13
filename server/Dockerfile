@@ -31,6 +31,8 @@ COPY server/src ./server/src
 COPY server/scripts ./server/scripts
 COPY shared ./shared
 COPY database/migrations ./database/migrations
+# Список радиоканалов читается из config/radio-channels.json.
+COPY config ./config
 
 USER node
 

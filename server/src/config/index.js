@@ -140,6 +140,78 @@ function readEnum(env, name, defaultValue, allowedValues, errors) {
   return value;
 }
 
+const SNOWFLAKE_PATTERN = /^[0-9]{17,20}$/;
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+/**
+ * Читает необязательный секрет. Пустое значение означает, что интеграция не настроена.
+ * Значение секрета никогда не попадает в сообщения об ошибках.
+ *
+ * @param {Record<string, string|undefined>} env
+ * @param {string} name
+ * @returns {string}
+ */
+function readOptionalSecret(env, name) {
+  const value = env[name];
+
+  if (typeof value !== 'string') {
+    return '';
+  }
+
+  return value.trim();
+}
+
+/**
+ * Читает и проверяет URL.
+ *
+ * @param {Record<string, string|undefined>} env
+ * @param {string} name
+ * @param {string} defaultValue
+ * @param {string[]} errors
+ * @param {{requireHttps?: boolean, stripTrailingSlash?: boolean}} options
+ * @returns {string}
+ */
+function readUrl(env, name, defaultValue, errors, { requireHttps = false, stripTrailingSlash = false } = {}) {
+  const value = readString(env, name, defaultValue, errors);
+
+  if (value === '') {
+    return '';
+  }
+
+  let url;
+
+  try {
+    url = new URL(value);
+  } catch {
+    errors.push(`Переменная ${name} должна содержать корректный URL.`);
+    return defaultValue;
+  }
+
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+    errors.push(`Переменная ${name} должна использовать протокол http или https.`);
+    return defaultValue;
+  }
+
+  if (url.username !== '' || url.password !== '' || url.hash !== '') {
+    errors.push(`Переменная ${name} не должна содержать учётные данные и фрагмент (#).`);
+    return defaultValue;
+  }
+
+  // HTTP допускается только для loopback-адресов (локальная разработка и тесты).
+  if (requireHttps && url.protocol !== 'https:' && !LOOPBACK_HOSTS.has(url.hostname)) {
+    errors.push(`Переменная ${name} должна использовать https.`);
+    return defaultValue;
+  }
+
+  return stripTrailingSlash ? value.replace(/\/+$/, '') : value;
+}
+
+function validateSnowflake(value, name, errors) {
+  if (value !== '' && !SNOWFLAKE_PATTERN.test(value)) {
+    errors.push(`Переменная ${name} должна содержать Discord ID (17–20 цифр).`);
+  }
+}
+
 function validateDatabaseName(value, name, errors) {
   if (!/^[A-Za-z_][A-Za-z0-9_]{0,62}$/.test(value)) {
     errors.push(
@@ -380,6 +452,64 @@ export function buildConfig(env = process.env) {
     { min: 1024, max: 65535 },
     errors,
   );
+
+  // Голосовой сервер: включается отдельно, чтобы этап 2 можно было запускать без mediasoup.
+  const voiceEnabled = readBoolean(env, 'VOICE_ENABLED', true, errors);
+
+  const proximityMaxDistance = readInteger(
+    env,
+    'PROXIMITY_MAX_DISTANCE',
+    30,
+    { min: 1, max: 1000 },
+    errors,
+  );
+  const proximityHysteresis = readInteger(
+    env,
+    'PROXIMITY_HYSTERESIS',
+    5,
+    { min: 0, max: 500 },
+    errors,
+  );
+  const proximityIntervalMs = readInteger(
+    env,
+    'PROXIMITY_UPDATE_INTERVAL_MS',
+    500,
+    { min: 100, max: 10000 },
+    errors,
+  );
+  const proximityMaxNeighbors = readInteger(
+    env,
+    'PROXIMITY_MAX_NEIGHBORS',
+    16,
+    { min: 1, max: 64 },
+    errors,
+  );
+
+  if (proximityMaxDistance <= proximityHysteresis) {
+    errors.push(
+      'Переменная PROXIMITY_HYSTERESIS должна быть меньше PROXIMITY_MAX_DISTANCE.',
+    );
+  }
+
+  // Discord-бот нужен только для проверки ролей радиоканалов.
+  const discordBotToken = readOptionalSecret(env, 'DISCORD_BOT_TOKEN');
+  const discordRolesCacheTtlMs = readInteger(
+    env,
+    'DISCORD_ROLES_CACHE_TTL_MS',
+    60000,
+    { min: 1000, max: 600000 },
+    errors,
+  );
+
+  const radioEnabledRequested = readBoolean(env, 'RADIO_ENABLED', true, errors);
+  const radioChannelsFile = readString(env, 'RADIO_CHANNELS_FILE', '', errors);
+  const radioMaxTransmissionMs = readInteger(
+    env,
+    'RADIO_MAX_TRANSMISSION_MS',
+    120000,
+    { min: 5000, max: 600000 },
+    errors,
+  );
   const mediasoupRtcMaxPort = readInteger(
     env,
     'MEDIASOUP_RTC_MAX_PORT',
@@ -399,6 +529,198 @@ export function buildConfig(env = process.env) {
     errors.push(
       'Переменная MEDIASOUP_RTC_MIN_PORT не может быть больше MEDIASOUP_RTC_MAX_PORT.',
     );
+  }
+
+  // Discord OAuth2. Авторизация включается, только если заданы все три переменные.
+  const discordClientId = readString(env, 'DISCORD_CLIENT_ID', '', errors);
+  const discordClientSecret = readOptionalSecret(env, 'DISCORD_CLIENT_SECRET');
+  const discordRedirectUri = readUrl(env, 'DISCORD_REDIRECT_URI', '', errors, {
+    requireHttps: nodeEnv === 'production',
+  });
+  const discordGuildId = readString(env, 'DISCORD_GUILD_ID', '', errors);
+  const discordTimeoutMs = readInteger(
+    env,
+    'DISCORD_TIMEOUT_MS',
+    5000,
+    { min: 1000, max: 30000 },
+    errors,
+  );
+
+  validateSnowflake(discordClientId, 'DISCORD_CLIENT_ID', errors);
+  validateSnowflake(discordGuildId, 'DISCORD_GUILD_ID', errors);
+
+  const discordValues = [discordClientId, discordClientSecret, discordRedirectUri];
+  const authEnabled = discordValues.every((value) => value !== '');
+
+  if (!authEnabled && discordValues.some((value) => value !== '')) {
+    errors.push(
+      'Переменные DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET и DISCORD_REDIRECT_URI задаются вместе: укажите все три или ни одной.',
+    );
+  }
+
+  // Серверные сессии.
+  const sessionIdleTtlSeconds = readInteger(
+    env,
+    'SESSION_IDLE_TTL_SECONDS',
+    7 * 24 * 60 * 60,
+    { min: 300, max: 30 * 24 * 60 * 60 },
+    errors,
+  );
+  const sessionAbsoluteTtlSeconds = readInteger(
+    env,
+    'SESSION_ABSOLUTE_TTL_SECONDS',
+    30 * 24 * 60 * 60,
+    { min: 3600, max: 90 * 24 * 60 * 60 },
+    errors,
+  );
+
+  if (sessionIdleTtlSeconds > sessionAbsoluteTtlSeconds) {
+    errors.push(
+      'Переменная SESSION_IDLE_TTL_SECONDS не может быть больше SESSION_ABSOLUTE_TTL_SECONDS.',
+    );
+  }
+
+  const sessionCookieSecure = readBoolean(
+    env,
+    'SESSION_COOKIE_SECURE',
+    nodeEnv === 'production',
+    errors,
+  );
+
+  if (nodeEnv === 'production' && !sessionCookieSecure) {
+    errors.push('Переменная SESSION_COOKIE_SECURE должна быть true в production.');
+  }
+
+  const authRateLimitMaxRequests = readInteger(
+    env,
+    'AUTH_RATE_LIMIT_MAX_REQUESTS',
+    20,
+    { min: 1, max: 1000 },
+    errors,
+  );
+  const authRateLimitWindowMs = readInteger(
+    env,
+    'AUTH_RATE_LIMIT_WINDOW_MS',
+    60000,
+    { min: 1000, max: 3600000 },
+    errors,
+  );
+  const trustProxy = readBoolean(env, 'TRUST_PROXY', false, errors);
+
+  // OAuth2 state живёт минуты, а не дни: это одноразовая попытка входа.
+  const authStateTtlSeconds = readInteger(
+    env,
+    'AUTH_STATE_TTL_SECONDS',
+    600,
+    { min: 60, max: 3600 },
+    errors,
+  );
+  // Необязательный адрес возврата после успешного входа (например, страница клиента).
+  const authPostLoginRedirectUrl = readUrl(
+    env,
+    'AUTH_POST_LOGIN_REDIRECT_URL',
+    '',
+    errors,
+    { requireHttps: nodeEnv === 'production' },
+  );
+  const sessionTouchIntervalSeconds = readInteger(
+    env,
+    'SESSION_TOUCH_INTERVAL_SECONDS',
+    60,
+    { min: 0, max: 3600 },
+    errors,
+  );
+  const sessionCleanupIntervalMs = readInteger(
+    env,
+    'SESSION_CLEANUP_INTERVAL_MS',
+    3600000,
+    { min: 60000, max: 24 * 60 * 60 * 1000 },
+    errors,
+  );
+
+  // Bloxlink. Используется guild-endpoint, поэтому нужен DISCORD_GUILD_ID.
+  const bloxlinkApiKey = readOptionalSecret(env, 'BLOXLINK_API_KEY');
+  const bloxlinkApiBaseUrl = readUrl(
+    env,
+    'BLOXLINK_API_BASE_URL',
+    'https://api.blox.link/v4/public',
+    errors,
+    { requireHttps: true, stripTrailingSlash: true },
+  );
+  const bloxlinkTimeoutMs = readInteger(
+    env,
+    'BLOXLINK_TIMEOUT_MS',
+    5000,
+    { min: 1000, max: 30000 },
+    errors,
+  );
+  const bloxlinkEnabled = bloxlinkApiKey !== '';
+
+  if (bloxlinkEnabled && discordGuildId === '') {
+    errors.push('Для работы BLOXLINK_API_KEY необходимо задать DISCORD_GUILD_ID.');
+  }
+
+  // Публичный Roblox Users API (ключ не требуется).
+  const robloxUsersApiBaseUrl = readUrl(
+    env,
+    'ROBLOX_USERS_API_BASE_URL',
+    'https://users.roblox.com',
+    errors,
+    { requireHttps: true, stripTrailingSlash: true },
+  );
+  const robloxTimeoutMs = readInteger(
+    env,
+    'ROBLOX_TIMEOUT_MS',
+    5000,
+    { min: 1000, max: 30000 },
+    errors,
+  );
+
+  // PRC ER:LC API V2 и опрос игрового сервера.
+  const prcServerKey = readOptionalSecret(env, 'PRC_SERVER_KEY');
+  const prcApiBaseUrl = readUrl(
+    env,
+    'PRC_API_BASE_URL',
+    'https://api.erlc.gg/v2',
+    errors,
+    { requireHttps: true, stripTrailingSlash: true },
+  );
+  const prcTimeoutMs = readInteger(
+    env,
+    'PRC_TIMEOUT_MS',
+    2500,
+    { min: 500, max: 30000 },
+    errors,
+  );
+  const gamePollEnabledRequested = readBoolean(env, 'GAME_POLL_ENABLED', true, errors);
+  const gamePollIntervalMs = readInteger(
+    env,
+    'GAME_POLL_INTERVAL_MS',
+    500,
+    { min: 500, max: 60000 },
+    errors,
+  );
+  const gamePollMaxBackoffMs = readInteger(
+    env,
+    'GAME_POLL_MAX_BACKOFF_MS',
+    30000,
+    { min: 1000, max: 300000 },
+    errors,
+  );
+  const gameStateStaleAfterMs = readInteger(
+    env,
+    'GAME_STATE_STALE_AFTER_MS',
+    5000,
+    { min: 1000, max: 120000 },
+    errors,
+  );
+
+  if (gamePollMaxBackoffMs < gamePollIntervalMs) {
+    errors.push('Переменная GAME_POLL_MAX_BACKOFF_MS не может быть меньше GAME_POLL_INTERVAL_MS.');
+  }
+
+  if (gameStateStaleAfterMs <= gamePollIntervalMs) {
+    errors.push('Переменная GAME_STATE_STALE_AFTER_MS должна быть больше GAME_POLL_INTERVAL_MS.');
   }
 
   if (errors.length > 0) {
@@ -447,6 +769,63 @@ export function buildConfig(env = process.env) {
       rtcMinPort: mediasoupRtcMinPort,
       rtcMaxPort: mediasoupRtcMaxPort,
       workerCount: mediasoupWorkerCount,
+    }),
+    auth: Object.freeze({
+      enabled: authEnabled,
+      sessionIdleTtlSeconds,
+      sessionAbsoluteTtlSeconds,
+      sessionTouchIntervalSeconds,
+      sessionCleanupIntervalMs,
+      cookieSecure: sessionCookieSecure,
+      rateLimitMaxRequests: authRateLimitMaxRequests,
+      rateLimitWindowMs: authRateLimitWindowMs,
+      stateTtlSeconds: authStateTtlSeconds,
+      postLoginRedirectUrl: authPostLoginRedirectUrl === '' ? null : authPostLoginRedirectUrl,
+      trustProxy,
+    }),
+    discord: Object.freeze({
+      clientId: discordClientId,
+      clientSecret: discordClientSecret,
+      redirectUri: discordRedirectUri,
+      guildId: discordGuildId === '' ? null : discordGuildId,
+      timeoutMs: discordTimeoutMs,
+      botToken: discordBotToken,
+      rolesCacheTtlMs: discordRolesCacheTtlMs,
+    }),
+    bloxlink: Object.freeze({
+      enabled: bloxlinkEnabled,
+      apiKey: bloxlinkApiKey,
+      apiBaseUrl: bloxlinkApiBaseUrl,
+      timeoutMs: bloxlinkTimeoutMs,
+    }),
+    roblox: Object.freeze({
+      usersApiBaseUrl: robloxUsersApiBaseUrl,
+      timeoutMs: robloxTimeoutMs,
+    }),
+    prc: Object.freeze({
+      apiBaseUrl: prcApiBaseUrl,
+      serverKey: prcServerKey,
+      timeoutMs: prcTimeoutMs,
+    }),
+    game: Object.freeze({
+      pollEnabled: gamePollEnabledRequested && prcServerKey !== '',
+      pollIntervalMs: gamePollIntervalMs,
+      pollMaxBackoffMs: gamePollMaxBackoffMs,
+      staleAfterMs: gameStateStaleAfterMs,
+    }),
+    voice: Object.freeze({
+      enabled: voiceEnabled,
+    }),
+    proximity: Object.freeze({
+      maxDistance: proximityMaxDistance,
+      hysteresis: proximityHysteresis,
+      intervalMs: proximityIntervalMs,
+      maxNeighbors: proximityMaxNeighbors,
+    }),
+    radio: Object.freeze({
+      enabled: radioEnabledRequested,
+      channelsFile: radioChannelsFile === '' ? null : radioChannelsFile,
+      maxTransmissionMs: radioMaxTransmissionMs,
     }),
   });
 }
