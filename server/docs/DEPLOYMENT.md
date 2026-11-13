@@ -176,9 +176,15 @@ Docker управляет iptables и может публиковать порт
 ```yaml
 services:
   server:
-    ports:
+    ports: !override
       - "127.0.0.1:${SERVER_PORT:-3000}:${SERVER_PORT:-3000}/tcp"
       - "${MEDIASOUP_RTC_MIN_PORT:-40000}-${MEDIASOUP_RTC_MAX_PORT:-40049}:${MEDIASOUP_RTC_MIN_PORT:-40000}-${MEDIASOUP_RTC_MAX_PORT:-40049}/udp"
+```
+
+Тег `!override` обязателен: без него Compose **добавляет** порты из override-файла к базовым, и TCP-порт остаётся опубликованным на всех интерфейсах. Тег поддерживается Docker Compose v2.24.4 и новее; проверьте версию командой `docker compose version`. Если версия старше, измените TCP-строку прямо в `docker-compose.yml`:
+
+```yaml
+      - "127.0.0.1:${SERVER_PORT:-3000}:${SERVER_PORT:-3000}/tcp"
 ```
 
 Запуск из папки `server`:
@@ -186,6 +192,14 @@ services:
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d
 ```
+
+Проверьте итоговую конфигурацию перед запуском:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.proxy.yml config
+```
+
+В блоке `ports` TCP-порт должен быть только с `host_ip: 127.0.0.1`, а UDP-диапазон — опубликован наружу.
 
 ### 5.3. Проверка UDP
 
