@@ -164,14 +164,16 @@ npm run check
 npm start
 ```
 
-По умолчанию клиент подключается к `http://localhost:3000`. Для другого сервера создайте `app/client-config.json`:
+В репозитории уже есть `app/client-config.json` с адресом развёрнутого сервера. Этот файл попадает в установщик, поэтому релизный клиент не использует `http://localhost:3000`:
 
 ```json
 {
-  "serverUrl": "https://voice.example.com",
+  "serverUrl": "http://201.8.80.121",
   "wsPath": "/ws"
 }
 ```
+
+Для другого сервера измените `serverUrl` в `app/client-config.json` и пересоберите клиент. Пользовательскую конфигурацию можно переопределить файлом `%APPDATA%\MoscowRoleplay Voice\client-config.json`.
 
 Подробнее: [app/docs/DEVELOPMENT.md](app/docs/DEVELOPMENT.md).
 
@@ -186,7 +188,7 @@ npm run dist
 Результат:
 
 ```text
-app\release\MoscowRoleplay-Voice-Setup-0.5.0.exe
+app\release\MoscowRoleplay-Voice-Setup-0.5.1.exe
 ```
 
 Установщик NSIS не требует прав администратора, позволяет выбрать папку установки и создаёт ярлыки. Пользовательские настройки при удалении не стираются.
