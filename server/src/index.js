@@ -90,31 +90,35 @@ function closeHttpServer(server) {
 }
 
 /**
- * Собирает модуль авторизации. Возвращает null, если Discord не настроен.
+ * Собирает модуль авторизации. Маршрут /auth/session работает и при отключённом
+ * Discord OAuth2, чтобы клиент мог показать понятную причину недоступности входа.
  *
  * @param {Readonly<object>} config
  * @param {import('./database/pool.js').Database} db
  * @param {import('pino').Logger} log
- * @returns {{authService: AuthService|null, authRouter: AuthRouter|null}}
+ * @returns {{authService: AuthService, authRouter: AuthRouter, sessionStore: import('./auth/session-store.js').SessionStore}}
  */
 function createAuthModule(config, db, log) {
-  if (!config.auth.enabled) {
+  const authEnabled = config.auth.enabled;
+
+  if (!authEnabled) {
     log.warn(
       'Discord OAuth2 не настроен (DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, DISCORD_REDIRECT_URI). ' +
-        'Маршруты авторизации отключены.',
+        'Вход отключён: /auth/session сообщает authEnabled=false.',
     );
-    return { authService: null, authRouter: null };
   }
 
-  const discordClient = new DiscordOAuthClient({
-    clientId: config.discord.clientId,
-    clientSecret: config.discord.clientSecret,
-    redirectUri: config.discord.redirectUri,
-    timeoutMs: config.discord.timeoutMs,
-  });
+  const discordClient = authEnabled
+    ? new DiscordOAuthClient({
+        clientId: config.discord.clientId,
+        clientSecret: config.discord.clientSecret,
+        redirectUri: config.discord.redirectUri,
+        timeoutMs: config.discord.timeoutMs,
+      })
+    : null;
 
   const bloxlinkClient =
-    config.bloxlink.enabled && config.discord.guildId !== null
+    authEnabled && config.bloxlink.enabled && config.discord.guildId !== null
       ? new BloxlinkClient({
           apiKey: config.bloxlink.apiKey,
           apiBaseUrl: config.bloxlink.apiBaseUrl,
@@ -123,7 +127,7 @@ function createAuthModule(config, db, log) {
         })
       : null;
 
-  if (bloxlinkClient === null) {
+  if (authEnabled && bloxlinkClient === null) {
     log.warn(
       'Bloxlink не настроен (BLOXLINK_API_KEY и DISCORD_GUILD_ID). Привязка Roblox будет недоступна.',
     );
@@ -268,7 +272,10 @@ async function main() {
   });
 
   // --- Сигнализация ---
-  if (authService !== null) {
+  // Без настроенного Discord OAuth2 голосовой сервис не запускается:
+  // клиент не сможет подтвердить личность, а открытые каналы без входа
+  // противоречат требованиям безопасности.
+  if (authService.isEnabled()) {
     signaling = new SignalingService({
       config,
       logger,
@@ -348,7 +355,7 @@ async function main() {
   poller?.start();
   proximityEngine.start();
 
-  if (sessionStore) {
+  if (sessionStore && config.auth.enabled) {
     sessionCleanupTimer = setInterval(() => {
       sessionStore.deleteExpired().catch((err) => {
         logger.warn({ err }, 'Не удалось удалить истёкшие сессии');
