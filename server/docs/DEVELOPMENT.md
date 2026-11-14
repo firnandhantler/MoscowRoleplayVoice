@@ -120,11 +120,14 @@ function New-StrongPassword {
 Для локальной разработки без интеграций можно оставить пустыми:
 
 - `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI`;
+- `DISCORD_GUILD_ID`, `DISCORD_ROLE_GUILD_IDS`;
 - `DISCORD_BOT_TOKEN`;
 - `BLOXLINK_API_KEY`;
 - `PRC_SERVER_KEY`.
 
 Сервер запустится, health-check будет работать, но вход, привязка Roblox, proximity и закрытые радиоканалы будут отключены с предупреждениями в логах.
+
+Формат радиоканалов и групп доступа описан в `server/config/README.md`. Для ролей на нескольких Discord-серверах задайте `DISCORD_ROLE_GUILD_IDS`; бот должен состоять на каждом сервере из списка.
 
 ### 3.3. Установить зависимости
 

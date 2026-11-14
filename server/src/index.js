@@ -222,7 +222,7 @@ async function main() {
 
   const roleService = new DiscordRoleService({
     botToken: config.discord.botToken,
-    guildId: config.discord.guildId,
+    guildIds: config.discord.roleGuildIds,
     cacheTtlMs: config.discord.rolesCacheTtlMs,
     timeoutMs: config.discord.timeoutMs,
     logger,
@@ -230,7 +230,7 @@ async function main() {
 
   if (!roleService.isEnabled()) {
     logger.warn(
-      'DISCORD_BOT_TOKEN не задан: закрытые радиоканалы (с roleIds) недоступны, открытые каналы продолжат работать.',
+      'DISCORD_BOT_TOKEN или список Discord-серверов не задан: закрытые радиоканалы недоступны, открытые каналы продолжат работать.',
     );
   }
 
@@ -240,6 +240,7 @@ async function main() {
     try {
       radioChannels = loadRadioChannels({
         ...(config.radio.channelsFile ? { path: config.radio.channelsFile } : {}),
+        allowedGuildIds: config.discord.roleGuildIds,
         logger,
       });
     } catch (err) {

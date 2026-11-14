@@ -14,8 +14,28 @@ const logger = {
 };
 
 const CHANNELS = [
-  { id: 'dispatch', name: 'Диспетчерская', description: '', roleIds: ['111111111111111111'], priority: 1 },
-  { id: 'open', name: 'Общий', description: '', roleIds: [], priority: 2 },
+  {
+    id: 'dispatch',
+    name: 'Диспетчерская',
+    description: '',
+    access: [
+      {
+        label: 'Основной сервер',
+        guildId: '333333333333333333',
+        roleIds: ['111111111111111111'],
+      },
+    ],
+    restricted: true,
+    priority: 1,
+  },
+  {
+    id: 'open',
+    name: 'Общий',
+    description: '',
+    access: [],
+    restricted: false,
+    priority: 2,
+  },
 ];
 
 function createProducer(source, userId) {
@@ -122,11 +142,12 @@ function createEngine({ allowed = true, roleError = false } = {}) {
 
   const roleService = {
     isEnabled: () => true,
-    async hasAnyRole() {
+    async hasAnyRoleInGuilds(_discordId, access) {
       if (roleError) {
         return null;
       }
 
+      assert.equal(access.length > 0, true);
       return allowed;
     },
   };
@@ -297,4 +318,7 @@ test('клиент не видит чужих ролей и служебных �
   assert.equal(state.enabled, true);
   assert.equal(state.channels.length, 2);
   assert.equal(Object.hasOwn(state.channels[0], 'roleIds'), false);
+  assert.equal(Object.hasOwn(state.channels[0], 'access'), false);
+  assert.equal(state.channels[0].restricted, true);
+  assert.equal(state.channels[1].restricted, false);
 });

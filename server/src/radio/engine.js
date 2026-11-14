@@ -13,7 +13,7 @@ import { AudioSource } from '../../shared/protocol.js';
 export class RadioEngine {
   /**
    * @param {{
-   *   channels: {id: string, name: string, description: string, roleIds: string[], priority: number}[],
+   *   channels: import('./channels.js').RadioChannel[],
    *   roleService: import('../discord/roles.js').DiscordRoleService,
    *   voiceManager: import('../voice/manager.js').VoiceManager,
    *   logger: import('pino').Logger,
@@ -59,14 +59,14 @@ export class RadioEngine {
       return false;
     }
 
-    // Открытые каналы (без roleIds) не требуют Discord-бота: они доступны
+    // Открытые каналы (без access) не требуют Discord-бота: они доступны
     // любому авторизованному пользователю через Discord OAuth2.
     if (this.roleService.isEnabled()) {
       return true;
     }
 
     for (const channel of this.channels.values()) {
-      if (channel.roleIds.length === 0) {
+      if (!channel.restricted) {
         return true;
       }
     }
@@ -89,7 +89,7 @@ export class RadioEngine {
         id: channel.id,
         name: channel.name,
         description: channel.description,
-        restricted: channel.roleIds.length > 0,
+        restricted: channel.restricted,
         joined: peer.radioChannelId === channel.id,
         speaker:
           speaker && speaker.userId !== peer.userId
@@ -117,8 +117,8 @@ export class RadioEngine {
    * @returns {Promise<void>}
    */
   async #assertAccess(peer, channel) {
-    // Пустой roleIds — открытый канал для любого авторизованного пользователя.
-    if (channel.roleIds.length === 0) {
+    // Пустой access — открытый канал для любого авторизованного пользователя.
+    if (!channel.restricted) {
       return;
     }
 
@@ -137,7 +137,10 @@ export class RadioEngine {
       });
     }
 
-    const allowed = await this.roleService.hasAnyRole(peer.discordId, channel.roleIds);
+    const allowed = await this.roleService.hasAnyRoleInGuilds(
+      peer.discordId,
+      channel.access,
+    );
 
     if (allowed === null) {
       throw new AppError(

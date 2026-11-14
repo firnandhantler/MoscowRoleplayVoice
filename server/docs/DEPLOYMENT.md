@@ -111,6 +111,7 @@ DISCORD_CLIENT_ID=...
 DISCORD_CLIENT_SECRET=...
 DISCORD_REDIRECT_URI=https://voice.example.com/auth/discord/callback
 DISCORD_GUILD_ID=...
+DISCORD_ROLE_GUILD_IDS=...
 DISCORD_BOT_TOKEN=...
 BLOXLINK_API_KEY=...
 PRC_SERVER_KEY=...
@@ -123,6 +124,8 @@ MEDIASOUP_ANNOUNCED_IP=203.0.113.10
 Пояснения:
 
 - `DISCORD_*` можно оставить пустыми, но тогда вход через Discord отключён, а голосовой клиент не сможет авторизоваться.
+- `DISCORD_GUILD_ID` — основной Discord-сервер: нужен Bloxlink и всегда участвует в проверке радиоролей.
+- `DISCORD_ROLE_GUILD_IDS` — дополнительные Discord-серверы для радиоролей через запятую. Бот должен состоять на каждом.
 - `DISCORD_BOT_TOKEN` нужен только для закрытых радиоканалов.
 - `BLOXLINK_API_KEY` нужен для привязки Roblox; без него proximity недоступен.
 - `PRC_SERVER_KEY` нужен для координат игроков.
@@ -337,8 +340,8 @@ docker compose up -d server
 
 1. Создайте бота в приложении и скопируйте токен в `DISCORD_BOT_TOKEN`.
 2. Включите **Server Members Intent**.
-3. Пригласите бота на сервер `DISCORD_GUILD_ID` с правом просматривать участников.
-4. Проверьте, что бот видит участников и роли.
+3. Пригласите бота на основной сервер `DISCORD_GUILD_ID` и на каждый сервер из `DISCORD_ROLE_GUILD_IDS` с правом просматривать участников.
+4. Проверьте, что бот видит участников и роли на всех этих серверах.
 
 Без бота открытые каналы работают, закрытые — нет. В логе будет предупреждение.
 
@@ -379,14 +382,27 @@ docker compose logs -f server | grep game
       "id": "police",
       "name": "Полиция",
       "description": "Канал сотрудников полиции",
-      "roleIds": ["123456789012345678"],
-      "priority": 1
+      "priority": 1,
+      "access": [
+        {
+          "label": "Полиция — основной сервер",
+          "guildId": "123456789012345678",
+          "roleIds": ["234567890123456789"]
+        },
+        {
+          "label": "Полиция — второй сервер",
+          "guildId": "345678901234567890",
+          "roleIds": ["456789012345678901"]
+        }
+      ]
     }
   ]
 }
 ```
 
-Пустой `roleIds` — открытый канал. Для закрытых каналов нужен бот и корректные ID ролей.
+Пустой `access` (`[]`) — открытый канал. Для закрытых каналов нужен бот, корректные ID ролей и сервер, входящий в `DISCORD_GUILD_ID` или `DISCORD_ROLE_GUILD_IDS`. Доступ разрешён при наличии хотя бы одной роли хотя бы в одной группе.
+
+Подробный формат, примеры и поиск ID: `server/config/README.md`.
 
 ## 9. Сборка и выдача клиента
 
@@ -623,6 +639,8 @@ docker compose logs --tail=200 postgres
 - `RADIO_ENABLED=true`;
 - файл `server/config/radio-channels.json` существует в контейнере;
 - для закрытых каналов — `DISCORD_BOT_TOKEN`, Server Members Intent и роли;
+- `guildId` каждой группы доступа входит в `DISCORD_GUILD_ID` или `DISCORD_ROLE_GUILD_IDS`;
+- бот состоит на каждом сервере из этого списка и видит участников;
 - логи `module=radio` и `module=discord-roles`.
 
 ### Порт занят
@@ -657,6 +675,7 @@ sudo ss -ltnp | grep ':3000'
 - [ ] `SESSION_COOKIE_SECURE=true`, HTTPS настроен.
 - [ ] `DISCORD_*` заполнены, redirect URI совпадает.
 - [ ] `DISCORD_BOT_TOKEN` и Server Members Intent настроены, если нужны закрытые каналы.
+- [ ] Бот приглашён на каждый сервер из `DISCORD_GUILD_ID` и `DISCORD_ROLE_GUILD_IDS`.
 - [ ] `BLOXLINK_API_KEY` и `DISCORD_GUILD_ID` заполнены, если нужна привязка Roblox.
 - [ ] `PRC_SERVER_KEY` заполнен.
 - [ ] `server/config/radio-channels.json` содержит корректные каналы и роли.

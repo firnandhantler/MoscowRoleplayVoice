@@ -149,3 +149,71 @@ test('принимает в production уникальный пароль дос�
   assert.equal(config.nodeEnv, 'production');
   assert.equal(config.database.password, 'StrongUniquePass_2026!');
 });
+
+const GUILD_MAIN = '111111111111111111';
+const GUILD_EXTRA = '222222222222222222';
+
+test('по умолчанию не содержит Discord-серверов для проверки радиоролей', () => {
+  const config = buildConfig({ ...BASE_ENV });
+
+  assert.deepEqual(config.discord.roleGuildIds, []);
+});
+
+test('включает основной Discord-сервер в список проверки радиоролей', () => {
+  const config = buildConfig({
+    ...BASE_ENV,
+    DISCORD_GUILD_ID: GUILD_MAIN,
+  });
+
+  assert.deepEqual(config.discord.roleGuildIds, [GUILD_MAIN]);
+});
+
+test('добавляет дополнительные Discord-серверы для радиоролей без повторов', () => {
+  const config = buildConfig({
+    ...BASE_ENV,
+    DISCORD_GUILD_ID: GUILD_MAIN,
+    DISCORD_ROLE_GUILD_IDS: `${GUILD_EXTRA}, ${GUILD_MAIN}`,
+  });
+
+  assert.deepEqual(config.discord.roleGuildIds, [GUILD_MAIN, GUILD_EXTRA]);
+});
+
+test('разрешает дополнительные Discord-серверы без основного', () => {
+  const config = buildConfig({
+    ...BASE_ENV,
+    DISCORD_ROLE_GUILD_IDS: GUILD_EXTRA,
+  });
+
+  assert.deepEqual(config.discord.roleGuildIds, [GUILD_EXTRA]);
+});
+
+test('отклоняет некорректный DISCORD_ROLE_GUILD_IDS', () => {
+  assert.throws(
+    () =>
+      buildConfig({
+        ...BASE_ENV,
+        DISCORD_ROLE_GUILD_IDS: `${GUILD_EXTRA},not-a-snowflake`,
+      }),
+    (err) => {
+      assert.equal(err instanceof ConfigError, true);
+      assert.match(err.message, /DISCORD_ROLE_GUILD_IDS/);
+      assert.equal(err.message.includes('not-a-snowflake'), false);
+      return true;
+    },
+  );
+});
+
+test('ограничивает количество дополнительных Discord-серверов', () => {
+  const ids = Array.from({ length: 21 }, (_, index) =>
+    String(100000000000000000n + BigInt(index)),
+  );
+
+  assert.throws(
+    () =>
+      buildConfig({
+        ...BASE_ENV,
+        DISCORD_ROLE_GUILD_IDS: ids.join(','),
+      }),
+    /не более 20 Discord ID/,
+  );
+});

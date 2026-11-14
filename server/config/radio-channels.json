@@ -4,28 +4,28 @@
       "id": "dispatch",
       "name": "Диспетчерская",
       "description": "Общий канал диспетчерской службы",
-      "roleIds": [],
+      "access": [],
       "priority": 1
     },
     {
       "id": "police",
       "name": "Полиция",
       "description": "Канал сотрудников полиции",
-      "roleIds": [],
+      "access": [],
       "priority": 2
     },
     {
       "id": "sheriff",
       "name": "Шериф",
       "description": "Канал офиса шерифа",
-      "roleIds": [],
+      "access": [],
       "priority": 3
     },
     {
       "id": "fire-ems",
       "name": "Пожарная служба и EMS",
       "description": "Канал пожарной службы и скорой помощи",
-      "roleIds": [],
+      "access": [],
       "priority": 4
     }
   ]

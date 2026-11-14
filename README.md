@@ -39,10 +39,11 @@
 - HTTP, WebSocket и signaling;
 - mediasoup v3;
 - Discord OAuth2, Discord Bot, Bloxlink, Roblox Users API;
+- радиороли нескольких Discord-серверов через `DISCORD_ROLE_GUILD_IDS`;
 - PRC ER:LC API V2, Game State;
 - серверные Proximity Engine и Radio Engine;
 - PostgreSQL, миграции и init-скрипты;
-- `server/config/radio-channels.json`;
+- `server/config/radio-channels.json` и инструкция `server/config/README.md`;
 - `Dockerfile`, `docker-compose.yml`, `docker-compose.dev.yml`, `.dockerignore`;
 - `.env.example`;
 - `package.json`, lock-файл и `node_modules` сервера;
@@ -143,7 +144,7 @@ npm run migrate
 npm run dev
 ```
 
-Замените в `server/.env` пароли-заглушки. Для первого запуска без интеграций можно оставить пустыми `DISCORD_*`, `BLOXLINK_API_KEY` и `PRC_SERVER_KEY`: сервер запустится, но вход, привязка Roblox, proximity и закрытые радиоканалы будут недоступны.
+Замените в `server/.env` пароли-заглушки. Для первого запуска без интеграций можно оставить пустыми `DISCORD_*` (включая `DISCORD_ROLE_GUILD_IDS`), `BLOXLINK_API_KEY` и `PRC_SERVER_KEY`: сервер запустится, но вход, привязка Roblox, proximity и закрытые радиоканалы будут недоступны.
 
 Проверка:
 
@@ -247,6 +248,7 @@ npm run build
 - [server/docs/ARCHITECTURE.md](server/docs/ARCHITECTURE.md) — архитектура сервера, протокол, потоки данных.
 - [server/docs/DEPLOYMENT.md](server/docs/DEPLOYMENT.md) — Ubuntu, Docker, HTTPS, firewall, backup.
 - [server/docs/DEVELOPMENT.md](server/docs/DEVELOPMENT.md) — серверная разработка, тесты, миграции.
+- [server/config/README.md](server/config/README.md) — формат радиоканалов и групп доступа на нескольких Discord-серверах.
 - [app/docs/DEVELOPMENT.md](app/docs/DEVELOPMENT.md) — клиент, настройки, сборка `.exe`.
 - [AGENTS.md](AGENTS.md) — обязательные правила для агентов и разработчиков.
 

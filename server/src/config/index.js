@@ -212,6 +212,59 @@ function validateSnowflake(value, name, errors) {
   }
 }
 
+/**
+ * Читает список Discord ID через запятую.
+ *
+ * @param {Record<string, string|undefined>} env
+ * @param {string} name
+ * @param {string[]} errors
+ * @param {{max?: number}} options
+ * @returns {string[]}
+ */
+function readSnowflakeList(env, name, errors, { max = 20 } = {}) {
+  const raw = env[name];
+
+  if (raw === undefined || raw === '') {
+    return [];
+  }
+
+  if (typeof raw !== 'string') {
+    errors.push(`Переменная ${name} должна быть строкой со списком Discord ID через запятую.`);
+    return [];
+  }
+
+  const parts = raw
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part) => part !== '');
+
+  if (parts.length > max) {
+    errors.push(`Переменная ${name} должна содержать не более ${max} Discord ID.`);
+  }
+
+  const result = [];
+  let hasInvalid = false;
+
+  for (const part of parts) {
+    if (!SNOWFLAKE_PATTERN.test(part)) {
+      hasInvalid = true;
+      continue;
+    }
+
+    if (!result.includes(part)) {
+      result.push(part);
+    }
+  }
+
+  if (hasInvalid) {
+    errors.push(
+      `Переменная ${name} должна содержать Discord ID (17–20 цифр), разделённые запятой.`,
+    );
+  }
+
+  return result.slice(0, max);
+}
+
 function validateDatabaseName(value, name, errors) {
   if (!/^[A-Za-z_][A-Za-z0-9_]{0,62}$/.test(value)) {
     errors.push(
@@ -549,6 +602,16 @@ export function buildConfig(env = process.env) {
   validateSnowflake(discordClientId, 'DISCORD_CLIENT_ID', errors);
   validateSnowflake(discordGuildId, 'DISCORD_GUILD_ID', errors);
 
+  // Основной сервер всегда участвует в проверке ролей. Дополнительные
+  // Discord-серверы перечисляются через запятую в DISCORD_ROLE_GUILD_IDS.
+  const discordRoleGuildIds = discordGuildId === '' ? [] : [discordGuildId];
+
+  for (const guildId of readSnowflakeList(env, 'DISCORD_ROLE_GUILD_IDS', errors)) {
+    if (!discordRoleGuildIds.includes(guildId)) {
+      discordRoleGuildIds.push(guildId);
+    }
+  }
+
   const discordValues = [discordClientId, discordClientSecret, discordRedirectUri];
   const authEnabled = discordValues.every((value) => value !== '');
 
@@ -788,6 +851,7 @@ export function buildConfig(env = process.env) {
       clientSecret: discordClientSecret,
       redirectUri: discordRedirectUri,
       guildId: discordGuildId === '' ? null : discordGuildId,
+      roleGuildIds: Object.freeze(discordRoleGuildIds),
       timeoutMs: discordTimeoutMs,
       botToken: discordBotToken,
       rolesCacheTtlMs: discordRolesCacheTtlMs,

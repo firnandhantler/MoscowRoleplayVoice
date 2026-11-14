@@ -10,16 +10,17 @@ const SNOWFLAKE_PATTERN = /^[0-9]{17,20}$/;
  *
  * OAuth2 scope `identify` не отдаёт роли, поэтому используется Discord Bot API:
  * `GET /guilds/{guild.id}/members/{user.id}` с заголовком `Authorization: Bot <token>`.
- * Бот должен состоять на сервере и иметь право просматривать участников.
+ * Бот должен состоять на каждом проверяемом сервере и иметь право просматривать участников.
  *
- * Ответы кэшируются на DISCORD_ROLES_CACHE_TTL_MS, чтобы не расходовать
- * лимиты Discord при каждом включении радио.
+ * Сервис поддерживает несколько Discord-серверов: роли запрашиваются отдельно
+ * для каждого guildId и кэшируются по паре guildId + discordId.
  */
 export class DiscordRoleService {
   /**
    * @param {{
    *   botToken: string|null,
-   *   guildId: string|null,
+   *   guildId?: string|null,
+   *   guildIds?: string[]|null,
    *   cacheTtlMs: number,
    *   timeoutMs: number,
    *   fetchImpl?: typeof fetch,
@@ -30,6 +31,7 @@ export class DiscordRoleService {
   constructor({
     botToken = null,
     guildId = null,
+    guildIds = null,
     cacheTtlMs = 60_000,
     timeoutMs = 5000,
     fetchImpl = globalThis.fetch,
@@ -37,7 +39,15 @@ export class DiscordRoleService {
     logger = null,
   }) {
     this.botToken = typeof botToken === 'string' && botToken !== '' ? botToken : null;
-    this.guildId = typeof guildId === 'string' && SNOWFLAKE_PATTERN.test(guildId) ? guildId : null;
+
+    const candidates = Array.isArray(guildIds) ? guildIds : guildId === null ? [] : [guildId];
+    const validGuildIds = candidates.filter(
+      (id) => typeof id === 'string' && SNOWFLAKE_PATTERN.test(id),
+    );
+
+    this.guildIds = [...new Set(validGuildIds)];
+    // Основной сервер оставлен для обратной совместимости и старых вызовов.
+    this.guildId = this.guildIds[0] ?? null;
     this.cacheTtlMs = cacheTtlMs;
     this.timeoutMs = timeoutMs;
     this.fetchImpl = fetchImpl;
@@ -48,19 +58,20 @@ export class DiscordRoleService {
     this.lastErrorCode = null;
   }
 
-  /** @returns {boolean} true, если бот настроен и роли можно проверять. */
+  /** @returns {boolean} true, если бот настроен и есть хотя бы один сервер. */
   isEnabled() {
-    return this.botToken !== null && this.guildId !== null;
+    return this.botToken !== null && this.guildIds.length > 0;
   }
 
   /**
-   * Возвращает роли участника.
+   * Возвращает роли участника на конкретном Discord-сервере.
    * Пустой массив — участник не на сервере. null — роли получить не удалось.
    *
    * @param {string} discordId
+   * @param {string} [guildId]
    * @returns {Promise<string[]|null>}
    */
-  async getRoles(discordId) {
+  async getRoles(discordId, guildId = this.guildId) {
     if (!this.isEnabled()) {
       return null;
     }
@@ -69,8 +80,18 @@ export class DiscordRoleService {
       return null;
     }
 
+    if (typeof guildId !== 'string' || !this.guildIds.includes(guildId)) {
+      this.lastErrorCode = 'discord_guild_not_configured';
+      this.logger?.warn(
+        { guildId },
+        'Discord-сервер не входит в список серверов для проверки ролей',
+      );
+      return null;
+    }
+
+    const cacheKey = `${guildId}:${discordId}`;
     const now = this.now();
-    const cached = this.cache.get(discordId);
+    const cached = this.cache.get(cacheKey);
 
     if (cached && cached.expiresAt > now) {
       return cached.roles;
@@ -78,7 +99,7 @@ export class DiscordRoleService {
 
     const response = await requestJson({
       service: SERVICE,
-      url: `${API_BASE}/guilds/${this.guildId}/members/${discordId}`,
+      url: `${API_BASE}/guilds/${guildId}/members/${discordId}`,
       headers: { Authorization: `Bot ${this.botToken}` },
       timeoutMs: this.timeoutMs,
       fetchImpl: this.fetchImpl,
@@ -87,20 +108,20 @@ export class DiscordRoleService {
 
     if (response.status === 404) {
       // Пользователь не состоит на сервере либо скрыт от бота.
-      this.#store(discordId, [], now);
+      this.#store(cacheKey, [], now);
       return [];
     }
 
     if (response.status === 429) {
       const retryAfterMs = parseRetryAfterMs(response.headers.get('retry-after'));
-      this.logger?.warn({ retryAfterMs }, 'Discord ограничил запросы ролей');
+      this.logger?.warn({ guildId, retryAfterMs }, 'Discord ограничил запросы ролей');
       return null;
     }
 
     if (response.status === 401 || response.status === 403) {
       this.lastErrorCode = 'discord_bot_unauthorized';
       this.logger?.error(
-        { status: response.status },
+        { guildId, status: response.status },
         'Discord отклонил токен бота или у бота нет прав на просмотр участников',
       );
       return null;
@@ -121,71 +142,121 @@ export class DiscordRoleService {
       (role) => typeof role === 'string' && SNOWFLAKE_PATTERN.test(role),
     );
 
-    this.#store(discordId, roles, now);
+    this.#store(cacheKey, roles, now);
     return roles;
   }
 
   /**
+   * Проверяет роль на одном сервере или на всех настроенных серверах.
+   *
    * @param {string} discordId
    * @param {string} roleId
+   * @param {string|null} [guildId] null — проверить все серверы.
    * @returns {Promise<boolean|null>}
    */
-  async hasRole(discordId, roleId) {
-    const roles = await this.getRoles(discordId);
-
-    if (roles === null) {
-      return null;
-    }
-
-    return roles.includes(roleId);
+  async hasRole(discordId, roleId, guildId = null) {
+    return this.hasAnyRole(discordId, [roleId], guildId);
   }
 
   /**
    * Проверяет, есть ли у пользователя одна из ролей.
-   * Пустой список ролей означает «канал доступен всем авторизованным пользователям».
+   * Пустой список ролей означает «доступ разрешён».
    *
    * @param {string} discordId
    * @param {string[]} roleIds
+   * @param {string|null} [guildId] null — проверить все настроенные серверы.
    * @returns {Promise<boolean|null>} null — проверить невозможно.
    */
-  async hasAnyRole(discordId, roleIds) {
+  async hasAnyRole(discordId, roleIds, guildId = null) {
     if (!Array.isArray(roleIds) || roleIds.length === 0) {
       return true;
     }
 
-    const roles = await this.getRoles(discordId);
-
-    if (roles === null) {
+    if (!this.isEnabled()) {
       return null;
     }
 
-    return roles.some((role) => roleIds.includes(role));
+    const guilds = guildId === null ? this.guildIds : [guildId];
+    let hadError = false;
+
+    for (const id of guilds) {
+      const roles = await this.getRoles(discordId, id);
+
+      if (roles === null) {
+        hadError = true;
+        continue;
+      }
+
+      if (roles.some((role) => roleIds.includes(role))) {
+        return true;
+      }
+    }
+
+    return hadError ? null : false;
   }
 
   /**
+   * Проверяет доступ по группам радиоканала.
+   *
+   * Каждая группа — { guildId, roleIds }. Доступ разрешён, если пользователь
+   * имеет хотя бы одну роль хотя бы в одной группе. Пустой массив групп
+   * означает открытый канал.
+   *
    * @param {string} discordId
+   * @param {{guildId: string|null, roleIds: string[]}[]} access
+   * @returns {Promise<boolean|null>} null — хотя бы один сервер не удалось проверить.
+   */
+  async hasAnyRoleInGuilds(discordId, access) {
+    if (!Array.isArray(access) || access.length === 0) {
+      return true;
+    }
+
+    let hadError = false;
+
+    for (const group of access) {
+      const allowed = await this.hasAnyRole(
+        discordId,
+        group.roleIds,
+        group.guildId ?? null,
+      );
+
+      if (allowed === true) {
+        return true;
+      }
+
+      if (allowed === null) {
+        hadError = true;
+      }
+    }
+
+    return hadError ? null : false;
+  }
+
+  /**
+   * @param {string} cacheKey
    * @param {string[]} roles
    * @param {number} now
    */
-  #store(discordId, roles, now) {
-    if (this.cache.size >= MAX_CACHE_ENTRIES && !this.cache.has(discordId)) {
+  #store(cacheKey, roles, now) {
+    if (this.cache.size >= MAX_CACHE_ENTRIES && !this.cache.has(cacheKey)) {
       const oldest = this.cache.keys().next().value;
       this.cache.delete(oldest);
     }
 
-    this.cache.set(discordId, { roles, expiresAt: now + this.cacheTtlMs });
+    this.cache.set(cacheKey, { roles, expiresAt: now + this.cacheTtlMs });
   }
 
-  /** Сбрасывает кэш (например, при выходе пользователя с сервера). */
+  /** Сбрасывает кэш ролей всех серверов. */
   clear() {
     this.cache.clear();
   }
 
-  /** @returns {{enabled: boolean, cachedUsers: number, lastErrorCode: string|null}} */
+  /** @returns {{enabled: boolean, guilds: number, cachedEntries: number, lastErrorCode: string|null}} */
   getStatus() {
     return {
       enabled: this.isEnabled(),
-      cachedUsers: this.cache.size,
+      guilds: this.guildIds.length,
+      cachedEntries: this.cache.size,
       lastErrorCode: this.lastErrorCode,
     };
   }
