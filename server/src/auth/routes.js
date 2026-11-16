@@ -139,7 +139,7 @@ function extractSessionToken(req) {
  * - GET  /auth/discord/callback — завершение входа;
  * - GET  /auth/session          — текущая сессия или { authenticated: false };
  * - POST /auth/logout           — завершение сессии;
- * - POST /auth/roblox/relink    — повторная проверка привязки через Bloxlink.
+ * - POST /auth/roblox/relink    — повторная проверка привязки через ER:LC Россия.
  */
 export class AuthRouter {
   /**

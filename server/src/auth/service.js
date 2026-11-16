@@ -28,12 +28,12 @@ function oauthError(error) {
 
 /**
  * Сервис авторизации: Discord OAuth2 (Authorization Code + PKCE), привязка Roblox
- * через Bloxlink и серверные сессии.
+ * через ER:LC Россия и серверные сессии.
  *
  * Ключевые правила:
  * - Discord ID берётся только из ответа Discord API, клиент не может его подставить;
  * - access/refresh token Discord не сохраняются и отзываются сразу после получения профиля;
- * - ошибки Bloxlink не блокируют вход: пользователь просто остаётся без привязки,
+ * - ошибки ER:LC Россия не блокируют вход: пользователь просто остаётся без привязки,
  *   а повторная проверка доступна отдельным маршрутом;
  * - `state` и PKCE verifier хранятся на сервере и одноразовы.
  */
@@ -43,7 +43,7 @@ export class AuthService {
    *   config: Readonly<object>,
    *   logger: import('pino').Logger,
    *   discordClient: import('../discord/client.js').DiscordOAuthClient|null,
-   *   bloxlinkClient: import('../bloxlink/client.js').BloxlinkClient|null,
+   *   verificationClient: import('../erlcrussia/client.js').ErlcRussiaVerificationClient|null,
    *   robloxClient: import('../roblox/client.js').RobloxUsersClient|null,
    *   sessionStore: import('./session-store.js').SessionStore,
    *   stateStore: import('./state-store.js').OAuthStateStore,
@@ -55,7 +55,7 @@ export class AuthService {
     config,
     logger,
     discordClient = null,
-    bloxlinkClient = null,
+    verificationClient = null,
     robloxClient = null,
     sessionStore,
     stateStore,
@@ -65,7 +65,7 @@ export class AuthService {
     this.config = config;
     this.logger = logger.child({ module: 'auth' });
     this.discordClient = discordClient;
-    this.bloxlinkClient = bloxlinkClient;
+    this.verificationClient = verificationClient;
     this.robloxClient = robloxClient;
     this.sessionStore = sessionStore;
     this.stateStore = stateStore;
@@ -217,7 +217,7 @@ export class AuthService {
   }
 
   /**
-   * Проверяет привязку Discord → Roblox через Bloxlink и уточняет Roblox username.
+   * Проверяет привязку Discord → Roblox через ER:LC Россия и уточняет Roblox username.
    *
    * Возвращает описание привязки для репозитория. Ошибки внешних сервисов
    * не прерывают вход: пользователь остаётся без изменения привязки.
@@ -226,21 +226,21 @@ export class AuthService {
    * @returns {Promise<{roblox: {id: string, username: string}|{unlink: true}|null, linkStatus: string}>}
    */
   async #resolveRobloxLink(discordId) {
-    if (this.bloxlinkClient === null) {
-      return { roblox: null, linkStatus: 'bloxlink_disabled' };
+    if (this.verificationClient === null) {
+      return { roblox: null, linkStatus: 'verification_disabled' };
     }
 
     let robloxId;
 
     try {
-      robloxId = await this.bloxlinkClient.getRobloxIdByDiscordId(discordId);
+      robloxId = await this.verificationClient.getRobloxIdByDiscordId(discordId);
     } catch (err) {
       this.logger.warn(
-        { code: err?.code ?? 'bloxlink_error' },
-        'Не удалось проверить привязку через Bloxlink',
+        { code: err?.code ?? 'erlcrussia_error' },
+        'Не удалось проверить привязку через ER:LC Россия',
       );
 
-      return { roblox: null, linkStatus: 'bloxlink_unavailable' };
+      return { roblox: null, linkStatus: 'verification_unavailable' };
     }
 
     if (robloxId === null) {
@@ -302,7 +302,7 @@ export class AuthService {
 
   /**
    * Повторно проверяет привязку Roblox для авторизованного пользователя.
-   * Roblox ID по-прежнему берётся из Bloxlink, а не из запроса клиента.
+   * Roblox ID по-прежнему берётся из ER:LC Россия, а не из запроса клиента.
    *
    * @param {string} userId
    * @returns {Promise<{user: object|null, linkStatus: string}>}

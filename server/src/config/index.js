@@ -701,27 +701,24 @@ export function buildConfig(env = process.env) {
     errors,
   );
 
-  // Bloxlink. Используется guild-endpoint, поэтому нужен DISCORD_GUILD_ID.
-  const bloxlinkApiKey = readOptionalSecret(env, 'BLOXLINK_API_KEY');
-  const bloxlinkApiBaseUrl = readUrl(
+  // Верификация ER:LC Россия API V3: связь Discord → Roblox.
+  // Проверка не привязана к Discord-серверу, поэтому DISCORD_GUILD_ID не нужен.
+  const erlcRussiaApiKey = readOptionalSecret(env, 'ERLCRUSSIA_API_KEY');
+  const erlcRussiaApiBaseUrl = readUrl(
     env,
-    'BLOXLINK_API_BASE_URL',
-    'https://api.blox.link/v4/public',
+    'ERLCRUSSIA_API_BASE_URL',
+    'https://api.erlcrussia.com/v3',
     errors,
     { requireHttps: true, stripTrailingSlash: true },
   );
-  const bloxlinkTimeoutMs = readInteger(
+  const erlcRussiaTimeoutMs = readInteger(
     env,
-    'BLOXLINK_TIMEOUT_MS',
+    'ERLCRUSSIA_TIMEOUT_MS',
     5000,
     { min: 1000, max: 30000 },
     errors,
   );
-  const bloxlinkEnabled = bloxlinkApiKey !== '';
-
-  if (bloxlinkEnabled && discordGuildId === '') {
-    errors.push('Для работы BLOXLINK_API_KEY необходимо задать DISCORD_GUILD_ID.');
-  }
+  const erlcRussiaEnabled = erlcRussiaApiKey !== '';
 
   // Публичный Roblox Users API (ключ не требуется).
   const robloxUsersApiBaseUrl = readUrl(
@@ -856,11 +853,11 @@ export function buildConfig(env = process.env) {
       botToken: discordBotToken,
       rolesCacheTtlMs: discordRolesCacheTtlMs,
     }),
-    bloxlink: Object.freeze({
-      enabled: bloxlinkEnabled,
-      apiKey: bloxlinkApiKey,
-      apiBaseUrl: bloxlinkApiBaseUrl,
-      timeoutMs: bloxlinkTimeoutMs,
+    erlcRussia: Object.freeze({
+      enabled: erlcRussiaEnabled,
+      apiKey: erlcRussiaApiKey,
+      apiBaseUrl: erlcRussiaApiBaseUrl,
+      timeoutMs: erlcRussiaTimeoutMs,
     }),
     roblox: Object.freeze({
       usersApiBaseUrl: robloxUsersApiBaseUrl,

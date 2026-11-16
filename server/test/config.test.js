@@ -217,3 +217,20 @@ test('ограничивает количество дополнительных
     /не более 20 Discord ID/,
   );
 });
+
+test('по умолчанию верификация ER:LC Россия отключена', () => {
+  const config = buildConfig({ ...BASE_ENV });
+
+  assert.equal(config.erlcRussia.enabled, false);
+  assert.equal(config.erlcRussia.apiBaseUrl, 'https://api.erlcrussia.com/v3');
+});
+
+test('включает верификацию ER:LC Россия без DISCORD_GUILD_ID', () => {
+  const config = buildConfig({
+    ...BASE_ENV,
+    ERLCRUSSIA_API_KEY: 'test-key',
+  });
+
+  assert.equal(config.erlcRussia.enabled, true);
+  assert.deepEqual(config.discord.roleGuildIds, []);
+});

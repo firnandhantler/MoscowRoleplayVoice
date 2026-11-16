@@ -52,8 +52,8 @@ server/
 │   └── sync-shared.js
 ├── shared/                  # канонический protocol.js
 ├── src/
-│   ├── auth/                # OAuth2, сессии, Bloxlink
-│   ├── bloxlink/
+│   ├── auth/                # OAuth2, сессии, верификация
+│   ├── erlcrussia/          # клиент верификации ER:LC Россия
 │   ├── config/
 │   ├── database/
 │   ├── discord/
@@ -122,7 +122,7 @@ function New-StrongPassword {
 - `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI`;
 - `DISCORD_GUILD_ID`, `DISCORD_ROLE_GUILD_IDS`;
 - `DISCORD_BOT_TOKEN`;
-- `BLOXLINK_API_KEY`;
+- `ERLCRUSSIA_API_KEY`;
 - `PRC_SERVER_KEY`.
 
 Сервер запустится, health-check будет работать, но вход, привязка Roblox, proximity и закрытые радиоканалы будут отключены с предупреждениями в логах.
@@ -315,9 +315,9 @@ docker compose exec server node src/database/migrate-cli.js
 - логи `module=auth-routes` и `module=auth`;
 - что порт не занят другим процессом.
 
-### 7.2. Bloxlink
+### 7.2. ER:LC Россия
 
-Без реального ключа Bloxlink привязка недоступна. Не имитируйте её: сервер должен явно возвращать `bloxlink_disabled`. Для проверки используйте тестовый Discord-сервер с установленным Bloxlink и ключом Server API.
+Без реального ключа привязка недоступна. Не имитируйте её: сервер должен явно возвращать `verification_disabled`. Для проверки получите ключ V3 с правом чтения связей Discord ↔ Roblox на [erlcrussia.com/my/tokens](https://erlcrussia.com/my/tokens) и задайте `ERLCRUSSIA_API_KEY`. Клиент вызывается только через `fetchImpl`, поэтому unit-тесты не обращаются к сети.
 
 ### 7.3. PRC
 
@@ -348,7 +348,7 @@ docker compose exec server node src/database/migrate-cli.js
 
 Не размещайте бизнес-логику в `server/src/index.js`.
 
-Не создавайте фиктивные реализации mediasoup, Discord, Bloxlink или PRC API. Если функция не реализована, она должна отсутствовать и быть задокументирована.
+Не создавайте фиктивные реализации mediasoup, Discord, ER:LC Россия или PRC API. Если функция не реализована, она должна отсутствовать и быть задокументирована.
 
 Общий протокол хранится только в `server/shared/protocol.js`. Не дублируйте формат сообщений в сервере и клиенте. Копию `app/shared/protocol.js` синхронизируйте командой `npm run shared:sync`.
 
@@ -387,7 +387,7 @@ git check-ignore -v server/.env
 - WSL2 может отсутствовать; Linux-совместимость mediasoup локально не проверяется.
 - Windows не доставляет POSIX-сигналы `SIGINT`/`SIGTERM` так же, как Linux. Graceful shutdown проверен unit-тестами; окончательная проверка нужна в Linux/Docker.
 - Реальная доставка UDP и работа mediasoup за NAT требуют VPS.
-- Discord, Bloxlink и PRC нельзя полноценно проверить без реальных ключей.
+- Discord, ER:LC Россия и PRC нельзя полноценно проверить без реальных ключей.
 - Локальный запуск не заменяет проверку на Ubuntu Server 24.04.
 
 ## 11. Чек-лист перед коммитом

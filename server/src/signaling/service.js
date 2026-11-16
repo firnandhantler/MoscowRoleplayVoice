@@ -276,7 +276,7 @@ export class SignalingService {
 
     if (peer.robloxId === null) {
       throw new AppError(
-        'Roblox-аккаунт не привязан. Привяжите аккаунт через Bloxlink и войдите снова.',
+        'Roblox-аккаунт не привязан. Привяжите аккаунт через ER:LC Россия и войдите снова.',
         { code: 'roblox_not_linked', statusCode: 409, expose: true },
       );
     }

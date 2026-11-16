@@ -11,7 +11,7 @@ import { AuthRouter } from './auth/routes.js';
 import { AuthService } from './auth/service.js';
 import { SessionStore } from './auth/session-store.js';
 import { OAuthStateStore } from './auth/state-store.js';
-import { BloxlinkClient } from './bloxlink/client.js';
+import { ErlcRussiaVerificationClient } from './erlcrussia/client.js';
 import { DiscordOAuthClient } from './discord/client.js';
 import { DiscordRoleService } from './discord/roles.js';
 import { GameState, GameStateEvent } from './game/state.js';
@@ -117,19 +117,18 @@ function createAuthModule(config, db, log) {
       })
     : null;
 
-  const bloxlinkClient =
-    authEnabled && config.bloxlink.enabled && config.discord.guildId !== null
-      ? new BloxlinkClient({
-          apiKey: config.bloxlink.apiKey,
-          apiBaseUrl: config.bloxlink.apiBaseUrl,
-          guildId: config.discord.guildId,
-          timeoutMs: config.bloxlink.timeoutMs,
+  const verificationClient =
+    authEnabled && config.erlcRussia.enabled
+      ? new ErlcRussiaVerificationClient({
+          apiKey: config.erlcRussia.apiKey,
+          apiBaseUrl: config.erlcRussia.apiBaseUrl,
+          timeoutMs: config.erlcRussia.timeoutMs,
         })
       : null;
 
-  if (authEnabled && bloxlinkClient === null) {
+  if (authEnabled && verificationClient === null) {
     log.warn(
-      'Bloxlink не настроен (BLOXLINK_API_KEY и DISCORD_GUILD_ID). Привязка Roblox будет недоступна.',
+      'Верификация ER:LC Россия не настроена (ERLCRUSSIA_API_KEY). Привязка Roblox будет недоступна.',
     );
   }
 
@@ -156,7 +155,7 @@ function createAuthModule(config, db, log) {
     config,
     logger: log,
     discordClient,
-    bloxlinkClient,
+    verificationClient,
     robloxClient,
     sessionStore,
     stateStore,
@@ -338,7 +337,7 @@ async function main() {
         name: config.database.database,
       },
       authEnabled: config.auth.enabled,
-      bloxlinkEnabled: config.bloxlink.enabled,
+      erlcRussiaEnabled: config.erlcRussia.enabled,
       gamePolling: config.game.pollEnabled,
       voice: {
         enabled: config.voice.enabled,

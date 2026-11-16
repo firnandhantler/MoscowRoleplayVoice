@@ -28,6 +28,7 @@ docker compose exec server node src/database/migrate-cli.js
 Текущие миграции:
 
 - `0001_bootstrap.sql` — служебная таблица `service_metadata`;
-- `0002_accounts_sessions.sql` — пользователи, связка Discord ↔ Roblox и серверные сессии.
+- `0002_accounts_sessions.sql` — пользователи, связка Discord ↔ Roblox и серверные сессии;
+- `0003_update_verification_comments.sql` — комментарии к `users` после перехода на ER:LC Россия.
 
 Бизнес-схема расширяется только новыми миграциями. Не изменяйте уже применённые файлы.

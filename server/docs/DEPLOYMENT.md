@@ -113,7 +113,7 @@ DISCORD_REDIRECT_URI=https://voice.example.com/auth/discord/callback
 DISCORD_GUILD_ID=...
 DISCORD_ROLE_GUILD_IDS=...
 DISCORD_BOT_TOKEN=...
-BLOXLINK_API_KEY=...
+ERLCRUSSIA_API_KEY=...
 PRC_SERVER_KEY=...
 
 SESSION_COOKIE_SECURE=true
@@ -124,10 +124,10 @@ MEDIASOUP_ANNOUNCED_IP=203.0.113.10
 Пояснения:
 
 - `DISCORD_*` можно оставить пустыми, но тогда вход через Discord отключён, а голосовой клиент не сможет авторизоваться.
-- `DISCORD_GUILD_ID` — основной Discord-сервер: нужен Bloxlink и всегда участвует в проверке радиоролей.
+- `DISCORD_GUILD_ID` — основной Discord-сервер: всегда участвует в проверке радиоролей. Для привязки Roblox не нужен.
 - `DISCORD_ROLE_GUILD_IDS` — дополнительные Discord-серверы для радиоролей через запятую. Бот должен состоять на каждом.
 - `DISCORD_BOT_TOKEN` нужен только для закрытых радиоканалов.
-- `BLOXLINK_API_KEY` нужен для привязки Roblox; без него proximity недоступен.
+- `ERLCRUSSIA_API_KEY` нужен для привязки Roblox; без него proximity недоступен.
 - `PRC_SERVER_KEY` нужен для координат игроков.
 - `MEDIASOUP_ANNOUNCED_IP` — публичный IPv4 VPS. Не `127.0.0.1` и не адрес контейнера.
 - `SESSION_COOKIE_SECURE=true` обязателен в production. Вход работает только по HTTPS.
@@ -345,14 +345,25 @@ docker compose up -d server
 
 Без бота открытые каналы работают, закрытые — нет. В логе будет предупреждение.
 
-### 8.3. Bloxlink
+### 8.3. ER:LC Россия (верификация Discord ↔ Roblox)
 
-1. Установите Bloxlink на Discord-сервер проекта.
-2. Получите ключ Server API в панели Bloxlink.
-3. Заполните `BLOXLINK_API_KEY` и `DISCORD_GUILD_ID`.
+1. Войдите через Discord на [страницу ключей ER:LC Россия](https://erlcrussia.com/my/tokens).
+2. Запросите у администрации проекта доступ к разделу «Верификация»: чтение связей Discord ↔ Roblox.
+3. Создайте API-ключ V3 и заполните `ERLCRUSSIA_API_KEY`.
 4. Перезапустите сервер.
 
-Пользователь должен состоять на сервере и иметь привязку Roblox в Bloxlink. Ключ может требовать платного тарифа Bloxlink. Без ключа вход работает, но `robloxId` пуст и proximity недоступен.
+Сервер вызывает `GET https://api.erlcrussia.com/v3/users?discordId=...` с заголовком `erlcrussia-api-key` и получает `robloxId`. Проверка не зависит от Discord-сервера, поэтому `DISCORD_GUILD_ID` для неё не требуется. Пользователь должен заранее привязать Roblox к Discord в системе ER:LC Россия.
+
+Ответ `404` и коды `5012`/`5050` означают отсутствие связки — вход продолжится без привязки. Ошибки ключа (`5007`, `5008`, `5009`, `5033`), лимитов (`5016`, `5039`) и временной недоступности (`5017`, `5018`, `5049`, HTTP 5xx) не блокируют вход, но `robloxId` останется пустым, а proximity будет недоступен. Причина пишется в лог в поле `code`.
+
+Проверить ключ вручную:
+
+```bash
+curl -sS "https://api.erlcrussia.com/v3/users?discordId=ВАШ_DISCORD_ID" \
+  -H "erlcrussia-api-key: $ERLCRUSSIA_API_KEY"
+```
+
+Не выводите ключ в общий лог и не передавайте его в клиент.
 
 ### 8.4. PRC ER:LC API V2
 
@@ -417,7 +428,7 @@ npm run dist
 Результат:
 
 ```text
-app\release\MoscowRoleplay-Voice-Setup-0.5.1.exe
+app\release\MoscowRoleplay-Voice-Setup-0.6.0.exe
 ```
 
 Перед выдачей:
@@ -663,7 +674,7 @@ sudo ss -ltnp | grep ':3000'
 - Не добавляйте Python и случайные зависимости.
 - Используйте HTTPS и не выставляйте `3000/tcp` всему интернету.
 - Проверьте, что логи не содержат секретов.
-- Храните ключи Discord, Bloxlink и PRC только в `.env` и менеджере секретов.
+- Храните ключи Discord, ER:LC Россия и PRC только в `.env` и менеджере секретов.
 
 ## 16. Чек-лист первого запуска
 
@@ -676,7 +687,7 @@ sudo ss -ltnp | grep ':3000'
 - [ ] `DISCORD_*` заполнены, redirect URI совпадает.
 - [ ] `DISCORD_BOT_TOKEN` и Server Members Intent настроены, если нужны закрытые каналы.
 - [ ] Бот приглашён на каждый сервер из `DISCORD_GUILD_ID` и `DISCORD_ROLE_GUILD_IDS`.
-- [ ] `BLOXLINK_API_KEY` и `DISCORD_GUILD_ID` заполнены, если нужна привязка Roblox.
+- [ ] `ERLCRUSSIA_API_KEY` заполнен, если нужна привязка Roblox.
 - [ ] `PRC_SERVER_KEY` заполнен.
 - [ ] `server/config/radio-channels.json` содержит корректные каналы и роли.
 - [ ] Firewall разрешает SSH, 80/443/tcp и UDP-диапазон.

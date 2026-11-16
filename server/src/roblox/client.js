@@ -8,7 +8,7 @@ const ROBLOX_USERNAME_PATTERN = /^[A-Za-z0-9_]{3,20}$/;
 /**
  * Клиент публичного Roblox Users API (GET /v1/users/{userId}, ключ не требуется).
  * Используется только для получения имени пользователя по Roblox ID,
- * подтверждённому через Bloxlink.
+ * подтверждённому через ER:LC Россия.
  */
 export class RobloxUsersClient {
   /**

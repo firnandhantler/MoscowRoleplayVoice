@@ -47,7 +47,7 @@
 - `POSTGRES_PASSWORD` не короче 12 символов; в production запрещены заглушки и совпадение с именем роли/базы;
 - `SESSION_COOKIE_SECURE=true` обязателен в production;
 - `DISCORD_*` задаются вместе или не задаются вовсе;
-- `BLOXLINK_API_KEY` требует `DISCORD_GUILD_ID`;
+- `ERLCRUSSIA_API_BASE_URL` и `ROBLOX_USERS_API_BASE_URL` допускают только HTTPS;
 - `PROXIMITY_HYSTERESIS < PROXIMITY_MAX_DISTANCE`;
 - `GAME_STATE_STALE_AFTER_MS > GAME_POLL_INTERVAL_MS`;
 - `MEDIASOUP_RTC_MIN_PORT <= MEDIASOUP_RTC_MAX_PORT`.
@@ -79,7 +79,7 @@
 | `GET` | `/auth/discord/callback` | завершение OAuth2, выдача cookie сессии |
 | `GET` | `/auth/session` | текущая сессия или `authenticated: false` |
 | `POST` | `/auth/logout` | отзыв сессии |
-| `POST` | `/auth/roblox/relink` | повторная проверка привязки через Bloxlink |
+| `POST` | `/auth/roblox/relink` | повторная проверка привязки через ER:LC Россия |
 
 Особенности:
 
@@ -124,14 +124,14 @@ WebSocket-шлюз на `ws`:
 2. `state` и verifier хранятся в памяти; `state` также записывается в HttpOnly-cookie с путём `/auth`.
 3. Пользователь входит в Discord; callback проверяет `state` сравнением за постоянное время.
 4. Сервер обменивает код на токен, получает профиль `identify` и сразу отзывает токен Discord.
-5. Bloxlink возвращает Roblox ID; Roblox Users API — актуальное имя.
+5. ER:LC Россия возвращает Roblox ID; Roblox Users API — актуальное имя.
 6. Пользователь и связка сохраняются в PostgreSQL.
 7. Создаётся серверная сессия: клиенту выдаётся случайный токен, в базе хранится только SHA-256-хеш.
 8. Cookie `mrv_session`: `HttpOnly`, `SameSite=Lax`, `Secure` в production, путь `/`.
 
 Сессия имеет скользящий (`SESSION_IDLE_TTL_SECONDS`) и абсолютный (`SESSION_ABSOLUTE_TTL_SECONDS`) срок. Просроченные сессии периодически удаляются.
 
-Ошибки Bloxlink и Roblox не блокируют вход: пользователь остаётся без привязки, а повторная проверка доступна через `/auth/roblox/relink`. Ошибки Discord прерывают вход.
+Ошибки ER:LC Россия и Roblox не блокируют вход: пользователь остаётся без привязки, а повторная проверка доступна через `/auth/roblox/relink`. Ошибки Discord прерывают вход.
 
 ### 3.6. `discord`
 
@@ -144,11 +144,12 @@ OAuth2 использует Authorization Code + PKCE и scope `identify`. То�
 
 Роли проверяются через `GET /guilds/{guild_id}/members/{user_id}` с заголовком `Authorization: Bot ...`. Ответы кэшируются на `DISCORD_ROLES_CACHE_TTL_MS` отдельно по паре `guildId:discordId`.
 
-Список проверяемых серверов собирается из `DISCORD_GUILD_ID` (основной сервер, также используется Bloxlink) и `DISCORD_ROLE_GUILD_IDS` (дополнительные серверы через запятую). Бот должен состоять на каждом из них и иметь право просматривать участников. Пустой список ролей означает открытый канал и не требует бота.
+Список проверяемых серверов собирается из `DISCORD_GUILD_ID` (основной сервер) и `DISCORD_ROLE_GUILD_IDS` (дополнительные серверы через запятую). Бот должен состоять на каждом из них и иметь право просматривать участников. Пустой список ролей означает открытый канал и не требует бота.
 
-### 3.7. `bloxlink` и `roblox`
+### 3.7. `erlcrussia` и `roblox`
 
-- `bloxlink/client.js` вызывает `/guilds/{guildId}/discord-to-roblox/{discordId}` и возвращает только Roblox ID.
+- `erlcrussia/client.js` вызывает `GET /v3/users?discordId=...` с заголовком `erlcrussia-api-key` и возвращает только Roblox ID.
+- Ответ `404` и коды `5012`/`5050` означают, что связки нет; ошибки ключа, лимитов и временной недоступности различаются по коду и статусу.
 - `roblox/client.js` уточняет имя через публичный `https://users.roblox.com`.
 
 Discord ID всегда берётся из ответа Discord API, а не из запроса клиента. Клиент не может подставить чужой Roblox ID.
@@ -373,7 +374,7 @@ index.js
 Клиент → /auth/discord/start → Discord
 Discord → /auth/discord/callback → проверка state
   → обмен кода на токен → профиль → отзыв токена
-  → Bloxlink → Roblox Users API
+  → ER:LC Россия → Roblox Users API
   → users + user_sessions
   → Set-Cookie mrv_session
 Клиент (главный процесс) → читает cookie → /auth/session
@@ -475,7 +476,7 @@ client.radio.startTransmission
 
 ## 10. Границы текущей реализации
 
-Реализовано: Discord OAuth2, Bloxlink, Roblox Users API, PRC polling, Proximity Engine, Radio Engine, mediasoup signaling, передача голоса, Electron UI, сборка `.exe`, Docker Compose.
+Реализовано: Discord OAuth2, ER:LC Россия, Roblox Users API, PRC polling, Proximity Engine, Radio Engine, mediasoup signaling, передача голоса, Electron UI, сборка `.exe`, Docker Compose.
 
 Не реализовано:
 
@@ -483,7 +484,7 @@ client.radio.startTransmission
 - запись голоса и модерация;
 - админ-панель и веб-клиент;
 - автоматическое обновление клиента;
-- альтернатива Bloxlink без внешнего сервиса;
+- собственная верификация Discord ↔ Roblox без внешнего сервиса;
 - мобильная версия.
 
 Внешние интеграции требуют реальных ключей и не имитируются. Если ключ не задан, функция отключается и пишет предупреждение в лог.
